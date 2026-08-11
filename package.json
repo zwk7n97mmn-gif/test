@@ -1,0 +1,17 @@
+{
+  "name": "kirinuki-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ブラウザだけで動く動画編集ツール。素材解析による自動字幕・自動カット・音声自動処理と、サムネイル／SNSキャプション作成。",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\"",
+    "start": "node scripts/serve.js",
+    "serve": "node scripts/serve.js"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

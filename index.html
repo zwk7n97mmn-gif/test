@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ブラウザだけで動く動画編集ツール。素材を解析して字幕・カット・音声処理を自動化し、サムネイルとSNSキャプションまで作成できます。">
+  <meta name="color-scheme" content="dark">
+  <title>Kirinuki Studio — 自動字幕・自動編集・サムネイル作成</title>
+  <link rel="stylesheet" href="./src/styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🎬</text></svg>">
+</head>
+<body>
+  <a class="skip-link" href="#main">本文へスキップ</a>
+
+  <header class="app-header">
+    <h1 class="app-title">🎬 Kirinuki Studio</h1>
+
+    <div class="app-header__project">
+      <label class="sr-only" for="project-name">プロジェクト名</label>
+      <input id="project-name" type="text" value="無題のプロジェクト" maxlength="120" autocomplete="off">
+    </div>
+
+    <p id="save-status" class="save-status" role="status" aria-live="polite"></p>
+
+    <div class="app-header__actions">
+      <button id="btn-undo" type="button" class="btn" disabled aria-keyshortcuts="Control+Z">元に戻す</button>
+      <button id="btn-redo" type="button" class="btn" disabled aria-keyshortcuts="Control+Shift+Z">やり直す</button>
+      <button id="btn-help" type="button" class="btn" aria-keyshortcuts="?">ショートカット</button>
+    </div>
+  </header>
+
+  <main id="main" class="app-main">
+    <section class="stage" aria-label="プレビュー">
+      <div class="stage__preview">
+        <canvas id="preview-canvas" width="1280" height="720" aria-label="編集結果のプレビュー" role="img"></canvas>
+
+        <div id="dropzone" class="dropzone" role="button" tabindex="0"
+             aria-label="動画ファイルを選択、またはここへドラッグ＆ドロップ">
+          <p class="dropzone__title">動画をドラッグ＆ドロップ</p>
+          <p class="dropzone__desc">またはクリック / Enter でファイルを選択<br>対応形式: MP4 (H.264) / WebM / MOV</p>
+          <p class="dropzone__note">ファイルはブラウザ内でのみ処理され、外部に送信されません。</p>
+        </div>
+
+        <p id="preview-overlay" class="preview-overlay" role="status" aria-live="polite" hidden></p>
+      </div>
+
+      <div id="transport" class="transport" role="group" aria-label="再生コントロール"></div>
+
+      <div id="timeline-host" class="timeline-host">
+        <h2 class="sr-only">タイムライン</h2>
+        <ul class="legend" aria-label="タイムラインの凡例">
+          <li><span class="legend__swatch legend__swatch--wave"></span>音量</li>
+          <li><span class="legend__swatch legend__swatch--clip"></span>採用クリップ</li>
+          <li><span class="legend__swatch legend__swatch--speed"></span>倍速クリップ</li>
+          <li><span class="legend__swatch legend__swatch--speech"></span>発話区間</li>
+          <li><span class="legend__swatch legend__swatch--cue"></span>字幕</li>
+          <li><span class="legend__swatch legend__swatch--needs"></span>未入力の字幕</li>
+        </ul>
+      </div>
+    </section>
+
+    <aside class="sidebar" aria-label="編集パネル">
+      <div class="tablist" role="tablist" aria-label="機能の切り替え">
+        <button id="tab-media"     role="tab" type="button" aria-selected="true"  aria-controls="panel-media"     aria-keyshortcuts="1">素材・解析</button>
+        <button id="tab-subtitles" role="tab" type="button" aria-selected="false" aria-controls="panel-subtitles" aria-keyshortcuts="2" tabindex="-1">字幕</button>
+        <button id="tab-edit"      role="tab" type="button" aria-selected="false" aria-controls="panel-edit"      aria-keyshortcuts="3" tabindex="-1">編集</button>
+        <button id="tab-audio"     role="tab" type="button" aria-selected="false" aria-controls="panel-audio"     aria-keyshortcuts="4" tabindex="-1">音声</button>
+        <button id="tab-thumbnail" role="tab" type="button" aria-selected="false" aria-controls="panel-thumbnail" aria-keyshortcuts="5" tabindex="-1">サムネイル</button>
+        <button id="tab-caption"   role="tab" type="button" aria-selected="false" aria-controls="panel-caption"   aria-keyshortcuts="6" tabindex="-1">キャプション</button>
+        <button id="tab-export"    role="tab" type="button" aria-selected="false" aria-controls="panel-export"    aria-keyshortcuts="7" tabindex="-1">書き出し</button>
+      </div>
+
+      <div id="panel-media"     class="panel" role="tabpanel" tabindex="0" aria-labelledby="tab-media"><h2>素材・解析</h2></div>
+      <div id="panel-subtitles" class="panel" role="tabpanel" tabindex="0" aria-labelledby="tab-subtitles" hidden><h2>字幕</h2></div>
+      <div id="panel-edit"      class="panel" role="tabpanel" tabindex="0" aria-labelledby="tab-edit"      hidden><h2>編集（自動カット）</h2></div>
+      <div id="panel-audio"     class="panel" role="tabpanel" tabindex="0" aria-labelledby="tab-audio"     hidden><h2>音声</h2></div>
+      <div id="panel-thumbnail" class="panel" role="tabpanel" tabindex="0" aria-labelledby="tab-thumbnail" hidden><h2>サムネイル</h2></div>
+      <div id="panel-caption"   class="panel" role="tabpanel" tabindex="0" aria-labelledby="tab-caption"   hidden><h2>キャプション</h2></div>
+      <div id="panel-export"    class="panel" role="tabpanel" tabindex="0" aria-labelledby="tab-export"    hidden><h2>書き出し</h2></div>
+    </aside>
+  </main>
+
+  <input id="file-input" type="file" accept="video/mp4,video/webm,video/quicktime,video/*" class="sr-only" aria-label="動画ファイルを選択">
+
+  <noscript>
+    <p class="alert alert--error">このツールは JavaScript を有効にしてご利用ください。</p>
+  </noscript>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
