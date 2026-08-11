@@ -6,11 +6,17 @@ import { editSummary, timelineDuration } from '../core/autoedit.js';
 import { toSRT, toVTT } from '../core/subtitles.js';
 import { serializeProject } from '../core/project.js';
 import { describeError, formatTime, speakableTime } from '../core/util.js';
-import { downloadBlob, downloadText, isExportSupported, pickOutputFormat, renderVideo } from '../media/exporter.js';
+import { downloadBlob, downloadText, isExportSupported, renderVideo, resolveExportPlan } from '../media/exporter.js';
+import { shareFile } from '../media/share.js';
+import { createWakeLock } from '../media/wakelock.js';
 import { announce, button, errorBox, h, infoBox, loading, select, toast } from './dom.js';
 import { sanitizeFilename } from './thumbnailEditor.js';
 
-export function createExportPanel({ store, getSourceUrl, getBgmBuffer, beforeExport }) {
+export function createExportPanel({ store, getSourceUrl, getSourceFile, getBgmBuffer, beforeExport }) {
+  const wakeLock = createWakeLock();
+  /** 出力形式の判定は非同期なので結果を保持する */
+  let cachedPlan = null;
+  let lastResult = null;
   const summaryHost = h('div.export-summary');
   const progressHost = h('div');
   const controlsHost = h('div.controls');
@@ -97,8 +103,14 @@ export function createExportPanel({ store, getSourceUrl, getBgmBuffer, beforeExp
     beforeExport?.();
 
     const target = resolutionSize(state, resolution);
+    const plan = await currentPlan();
     controller = new AbortController();
-    const progress = loading(`書き出し中… 0%（実時間でレンダリングします：約 ${speakableTime(total)}）`, { determinate: true });
+    await wakeLock.request();
+
+    const estimate = plan.realtime
+      ? `実時間でレンダリングします：約 ${speakableTime(total)}`
+      : '再生せずに書き出すため、画面を触っていても中断しません';
+    const progress = loading(`書き出し中… 0%（${estimate}）`, { determinate: true });
     const cancelButton = button('キャンセル', {
       variant: 'danger',
       onClick: () => {
@@ -110,21 +122,26 @@ export function createExportPanel({ store, getSourceUrl, getBgmBuffer, beforeExp
     announce('書き出しを開始しました。');
 
     try {
-      const { blob, format } = await renderVideo({
+      const result = await renderVideo({
         project: state,
+        plan,
         sourceUrl: getSourceUrl(),
+        sourceFile: getSourceFile?.() || null,
         bgmBuffer: getBgmBuffer(),
         width: target.width,
         height: target.height,
         fps: state.media?.fps || 30,
         signal: controller.signal,
-        onProgress: ({ ratio, currentSec }) => {
+        onProgress: ({ ratio, currentSec, phase, detail }) => {
           progress.setRatio(ratio);
-          progress.setLabel(`書き出し中… ${Math.round(ratio * 100)}%（${formatTime(currentSec)} / ${formatTime(total)}）`);
+          const where = phase
+            ? `${phase}${detail ? `（${detail}）` : ''}`
+            : `${formatTime(currentSec || 0)} / ${formatTime(total)}`;
+          progress.setLabel(`書き出し中… ${Math.round(ratio * 100)}% ${where}`);
         },
       });
-      downloadBlob(blob, `${sanitizeFilename(state.name)}.${format.ext}`);
-      progressHost.replaceChildren(infoBox(`書き出しが完了しました：${format.label} / ${(blob.size / 1024 / 1024).toFixed(1)} MB`));
+      lastResult = { blob: result.blob, filename: `${sanitizeFilename(state.name)}.${result.format.ext}` };
+      showResult(result);
       toast('動画を書き出しました。', { type: 'success' });
       announce('書き出しが完了しました。');
     } catch (error) {
@@ -136,8 +153,62 @@ export function createExportPanel({ store, getSourceUrl, getBgmBuffer, beforeExp
       }
     } finally {
       controller = null;
+      await wakeLock.release();
       renderControls(false);
     }
+  }
+
+  /** 書き出し後の導線：共有を最優先に置く（スマホではこれが無いと完結しない） */
+  function showResult(result) {
+    const sizeMb = (result.blob.size / 1024 / 1024).toFixed(1);
+    progressHost.replaceChildren(
+      h('div.result', {}, [
+        infoBox(`書き出しが完了しました：${result.format.label} / ${sizeMb} MB`),
+        result.notice ? infoBox(result.notice) : null,
+        h('div.toolbar', {}, [
+          button('📤 共有 / 保存', {
+            variant: 'primary',
+            onClick: async () => {
+              if (!lastResult) return;
+              const shared = await shareFile({
+                blob: lastResult.blob,
+                filename: lastResult.filename,
+                title: store.getState().name,
+                text: store.getState().caption.text || '',
+              });
+              if (shared.method === 'download') toast('端末に保存しました。', { type: 'success' });
+              if (shared.method === 'share') toast('共有しました。', { type: 'success' });
+            },
+          }),
+          button('端末に保存', {
+            onClick: () => {
+              if (!lastResult) return;
+              downloadBlob(lastResult.blob, lastResult.filename);
+              toast('端末に保存しました。', { type: 'success' });
+            },
+          }),
+        ]),
+        h('p.hint', { text: '「共有」から SNS アプリへ直接送れます（対応していない環境では保存になります）。' }),
+      ].filter(Boolean)),
+    );
+  }
+
+  /** 出力形式を判定して結果を覚えておく */
+  async function currentPlan() {
+    const state = store.getState();
+    const needsAudio = state.media?.hasAudio !== false || Boolean(getBgmBuffer());
+    // 解析前は音声の有無が未確定なので、判定結果のキーに含めて取り直す
+    const key = `${state.media?.width}x${state.media?.height}@${state.media?.fps}:${resolution}:${needsAudio}`;
+    if (cachedPlan && cachedPlan.key === key) return cachedPlan.plan;
+    const target = resolutionSize(state, resolution);
+    const plan = await resolveExportPlan({
+      width: target.width,
+      height: target.height,
+      fps: state.media?.fps || 30,
+      needsAudio,
+    });
+    cachedPlan = { key, plan };
+    return plan;
   }
 
   function resolutionSize(state, mode) {
@@ -157,7 +228,7 @@ export function createExportPanel({ store, getSourceUrl, getBgmBuffer, beforeExp
     }
     const summary = editSummary(state.clips, state.media.duration);
     const cues = state.subtitles.filter((c) => c.text.trim()).length;
-    const format = pickOutputFormat();
+    const formatDd = h('dd', { text: '判定中…' });
     summaryHost.replaceChildren(
       h('dl.summary', {}, [
         h('dt', { text: '出力尺' }),
@@ -167,9 +238,16 @@ export function createExportPanel({ store, getSourceUrl, getBgmBuffer, beforeExp
         h('dt', { text: '焼き込み字幕' }),
         h('dd', { text: `${cues} 件` }),
         h('dt', { text: '出力形式' }),
-        h('dd', { text: format ? format.label : '未対応（この環境では動画書き出し不可）' }),
+        formatDd,
       ]),
     );
+    currentPlan().then((plan) => {
+      formatDd.textContent = plan.mode
+        ? `${plan.label}${plan.realtime ? '（実時間）' : '（高速・再生に依存しない）'}`
+        : '未対応（この環境では動画書き出し不可）';
+    }).catch(() => {
+      formatDd.textContent = '判定できませんでした';
+    });
   }
 
   function renderControls(busy) {
@@ -193,10 +271,15 @@ export function createExportPanel({ store, getSourceUrl, getBgmBuffer, beforeExp
     controlsHost.replaceChildren(
       h('div.grid-2', {}, [resSelect.element]),
       h('div.toolbar', {}, [startButton]),
-      h('p.hint', {
-        text: '書き出しは実時間でレンダリングされます（10 分の動画なら約 10 分）。タブを閉じずにお待ちください。',
-      }),
+      h('p.hint', { id: 'export-note', text: '書き出し方式を判定しています…' }),
     );
+    currentPlan().then((plan) => {
+      const note = controlsHost.querySelector('#export-note');
+      if (!note) return;
+      note.textContent = plan.realtime
+        ? 'この環境では再生しながらの書き出しになります（10 分の動画なら約 10 分）。画面を消さずにお待ちください。'
+        : '再生せずに書き出すため、画面ロックやアプリ切り替えで壊れません。書き出し中は画面が消えないようにします。';
+    }).catch(() => {});
   }
 
   const unsubscribe = store.subscribe(() => {

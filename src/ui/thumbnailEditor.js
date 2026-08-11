@@ -6,8 +6,9 @@
 import { THUMBNAIL_SIZE, rankThumbnailCandidates, suggestThumbnailTitle } from '../core/thumbnail.js';
 import { clamp, describeError, formatTime } from '../core/util.js';
 import { drawThumbnail } from '../media/render.js';
-import { downloadBlob, renderThumbnail } from '../media/exporter.js';
-import { button, emptyState, h, loading, select, toast, toggle } from './dom.js';
+import { renderThumbnail } from '../media/exporter.js';
+import { button, emptyState, h, imeSafeInput, loading, select, toast, toggle } from './dom.js';
+import { shareFile } from '../media/share.js';
 
 export function createThumbnailEditor({ store, getThumbVideo, getSourceUrl }) {
   const preview = h('canvas.thumb-preview', {
@@ -153,8 +154,12 @@ export function createThumbnailEditor({ store, getThumbVideo, getSourceUrl }) {
     }
     try {
       const blob = await renderThumbnail(state, url);
-      downloadBlob(blob, `${sanitizeFilename(state.name)}_thumbnail.png`);
-      toast('サムネイルを書き出しました（1280×720 PNG）。', { type: 'success' });
+      const filename = `${sanitizeFilename(state.name)}_thumbnail.png`;
+      const shared = await shareFile({ blob, filename, title: state.thumbnail.title || state.name });
+      toast(
+        shared.method === 'share' ? 'サムネイルを共有しました。' : 'サムネイルを保存しました（1280×720 PNG）。',
+        { type: 'success' },
+      );
     } catch (error) {
       toast(describeError(error), { type: 'error' });
     }
@@ -169,21 +174,21 @@ export function createThumbnailEditor({ store, getThumbVideo, getSourceUrl }) {
       value: thumb.title,
       maxlength: '120',
       attrs: { 'aria-label': 'サムネイルの見出し', placeholder: '例）3分でわかる自動字幕' },
-      on: { input: (e) => { patchLive('title', e.target.value); } },
+      on: imeSafeInput((value) => patchLive('title', value)),
     });
     const subtitleInput = h('input', {
       type: 'text',
       value: thumb.subtitle,
       maxlength: '160',
       attrs: { 'aria-label': 'サムネイルのサブテキスト', placeholder: '例）初心者向け / 完全解説' },
-      on: { input: (e) => { patchLive('subtitle', e.target.value); } },
+      on: imeSafeInput((value) => patchLive('subtitle', value)),
     });
     const badgeInput = h('input', {
       type: 'text',
       value: thumb.badge,
       maxlength: '24',
       attrs: { 'aria-label': 'バッジ文字（右上）', placeholder: '例）NEW' },
-      on: { input: (e) => { patchLive('badge', e.target.value); } },
+      on: imeSafeInput((value) => patchLive('badge', value)),
     });
     const accentInput = h('input', {
       type: 'color',
@@ -252,7 +257,7 @@ export function createThumbnailEditor({ store, getThumbVideo, getSourceUrl }) {
           },
           attrs: { 'aria-label': '現在のサムネイル位置を再取得' },
         }),
-        button('PNG を書き出し', { variant: 'primary', onClick: exportPng }),
+        button('📤 サムネを共有 / 保存', { variant: 'primary', onClick: exportPng }),
       ]),
       h('p.hint', {
         text: `使用フレーム: ${formatTime(thumb.sourceTime, { ms: true })} / 出力サイズ 1280×720`,

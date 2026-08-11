@@ -20,6 +20,8 @@
 
   --radius: 10px;
   --gap: 12px;
+  --tap: 44px;
+  --tabbar-height: 62px;
   --font: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif;
 }
 
@@ -88,6 +90,8 @@ p { margin: 0 0 8px; }
   align-items: center;
   gap: var(--gap);
   padding: 10px 16px;
+  /* ノッチ端末で時計やカメラ穴に隠れないようにする（padding の後に書くこと） */
+  padding-top: calc(10px + env(safe-area-inset-top));
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   position: sticky;
@@ -225,12 +229,18 @@ p { margin: 0 0 8px; }
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-muted);
-  padding: 7px 11px;
+  padding: 8px 12px;
   border-radius: 999px;
   cursor: pointer;
   font: inherit;
   font-size: 0.88rem;
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  touch-action: manipulation;
 }
+.tab__icon { font-size: 1.05em; line-height: 1; }
 .tablist [role="tab"]:hover { color: var(--text); background: var(--surface-raised); }
 .tablist [role="tab"][aria-selected="true"] {
   background: var(--accent);
@@ -261,14 +271,16 @@ input[type="text"], input[type="url"], input[type="password"], input[type="numbe
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 10px;
   font: inherit;
   width: 100%;
   min-width: 0;
+  /* タップ領域の最小サイズ（WCAG 2.5.5 / モバイルの推奨値） */
+  min-height: var(--tap);
 }
 input[type="color"] { background: var(--surface-raised); border: 1px solid var(--border); border-radius: 8px; height: 40px; width: 100%; padding: 4px; }
-input[type="range"] { width: 100%; accent-color: var(--accent); }
-input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); }
+input[type="range"] { width: 100%; accent-color: var(--accent); min-height: var(--tap); }
+input[type="checkbox"] { width: 24px; height: 24px; accent-color: var(--accent); }
 textarea { resize: vertical; line-height: 1.5; }
 input::placeholder, textarea::placeholder { color: #8c9aa8; }
 input:disabled, select:disabled, textarea:disabled, .btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -278,11 +290,14 @@ input:disabled, select:disabled, textarea:disabled, .btn:disabled { opacity: 0.5
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 8px 12px;
+  padding: 10px 14px;
   font: inherit;
   font-size: 0.88rem;
   cursor: pointer;
   white-space: nowrap;
+  min-height: var(--tap);
+  /* タップ時の 300ms 遅延とダブルタップ拡大を防ぐ */
+  touch-action: manipulation;
 }
 .btn:hover:not(:disabled) { border-color: var(--accent); }
 .btn--primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
@@ -332,7 +347,7 @@ input:disabled, select:disabled, textarea:disabled, .btn:disabled { opacity: 0.5
 /* ---------- 字幕エディタ ---------- */
 
 .cue-status { color: var(--text-muted); font-size: 0.85rem; margin: 0; }
-.cue-viewport { position: relative; height: 52vh; min-height: 280px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.cue-viewport { position: relative; height: 52vh; min-height: 280px; overflow-y: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border); border-radius: var(--radius); }
 .cue-list__spacer { width: 1px; }
 .cue-list { position: absolute; inset: 0; }
 .cue-row {
@@ -349,8 +364,8 @@ input:disabled, select:disabled, textarea:disabled, .btn:disabled { opacity: 0.5
 .cue-row__sep { color: var(--text-muted); }
 .cue-row__meta.is-warn { color: var(--warning); font-weight: 700; }
 .cue-row__actions { display: flex; gap: 6px; }
-.cue-row__actions .btn { padding: 3px 8px; font-size: 0.8rem; }
-.time-input { width: 8.5em; padding: 3px 6px; font-variant-numeric: tabular-nums; font-size: 0.82rem; }
+.cue-row__actions .btn { padding: 6px 10px; font-size: 0.8rem; min-height: 40px; }
+.time-input { width: 9em; padding: 6px 8px; font-variant-numeric: tabular-nums; font-size: 0.82rem; min-height: 40px; }
 .cue-text { min-height: 42px; }
 
 /* ---------- クリップ ---------- */
@@ -445,9 +460,151 @@ input:disabled, select:disabled, textarea:disabled, .btn:disabled { opacity: 0.5
 .toast--success { border-left-color: var(--success); }
 .toast--error { border-left-color: var(--danger); }
 .toast__text { flex: 1; font-size: 0.88rem; }
-.toast__close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.9rem; padding: 0 2px; }
+.toast__close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  /* タップ領域を確保する（見た目は小さいままでよい） */
+  min-width: var(--tap);
+  min-height: var(--tap);
+  margin: -10px -8px -10px 0;
+  touch-action: manipulation;
+}
 .toast__close:hover { color: var(--text); }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition-duration: 0.001ms !important; animation-duration: 0.001ms !important; }
+}
+
+
+/* ==================================================================
+ * モバイル（縦持ち）レイアウト
+ *
+ * 実測で判明した問題への対処:
+ *   - タブ列が画面外(y=813)に押し出されて操作できない → 画面下部へ固定
+ *   - 操作要素 26 箇所が 44px 未満 → --tap で最小サイズを保証
+ *   - トーストが画面の半分を占有 → 表示数と高さを制限
+ *   - iOS はフォントが 16px 未満の入力で自動ズームする → 16px を下限に
+ * ================================================================== */
+
+@media (max-width: 760px) {
+  body { font-size: 16px; }
+
+  .app-header {
+    gap: 8px;
+    padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+  }
+  .app-title { font-size: 0.95rem; }
+  .app-title .app-title__full { display: none; }
+  .app-header__project { flex: 1 1 120px; order: 2; }
+  .save-status { order: 4; width: 100%; font-size: 0.75rem; }
+  .app-header__actions { order: 3; gap: 6px; }
+  .app-header__actions .btn { padding: 8px 10px; font-size: 0.8rem; }
+
+  .app-main {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px 10px calc(var(--tabbar-height) + env(safe-area-inset-bottom) + 12px);
+  }
+
+  .stage { gap: 8px; }
+  .stage__preview { border-radius: 8px; }
+
+  .transport { padding: 8px; gap: 6px; }
+  .transport .btn { flex: 1 1 auto; min-width: 64px; justify-content: center; }
+  .transport__time { margin-left: 0; width: 100%; text-align: center; order: -1; }
+  /* 物理キーボードが無い環境ではショートカットの案内を出さない */
+  .transport__hint { display: none; }
+
+  .timeline { height: 150px; }
+  .legend { font-size: 0.72rem; gap: 8px; }
+
+  /* サイドバーは通常の縦並びに、タブ列だけ画面下へ固定する */
+  .sidebar {
+    position: static;
+    max-height: none;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+  }
+  .panel {
+    overflow: visible;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 12px;
+  }
+
+  .tablist {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    gap: 2px;
+    padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    border-bottom: none;
+    box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.35);
+  }
+  .tablist::-webkit-scrollbar { display: none; }
+  .tablist [role="tab"] {
+    flex: 1 0 auto;
+    min-width: 58px;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 4px;
+    border-radius: 10px;
+    font-size: 0.68rem;
+    line-height: 1.1;
+  }
+  .tab__icon { font-size: 1.35em; }
+
+  .grid-2 { grid-template-columns: 1fr; }
+  .toolbar { gap: 6px; }
+  .toolbar .btn { flex: 1 1 auto; min-width: 44%; justify-content: center; }
+
+  .cue-viewport { height: 58vh; min-height: 240px; }
+  .cue-row__actions .btn { flex: 1 1 auto; }
+
+  .summary { grid-template-columns: 1fr; gap: 2px 0; }
+  .summary dt { margin-top: 6px; }
+
+  .thumb-candidates { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+  .caption-output { min-height: 200px; }
+
+  /* トーストはタブ列の上に、最大 2 件だけ見せる */
+  .toast-host {
+    left: 10px;
+    right: 10px;
+    bottom: calc(var(--tabbar-height) + env(safe-area-inset-bottom) + 10px);
+    max-width: none;
+    max-height: 40vh;
+    overflow: hidden;
+  }
+  .toast-host .toast:nth-last-child(n + 3) { display: none; }
+
+  /* ダイアログはボトムシートとして出す（親指が届く位置に操作を置く） */
+  .dialog-overlay { align-items: end; padding: 0; }
+  .dialog {
+    border-radius: var(--radius) var(--radius) 0 0;
+    max-height: 88vh;
+    padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+  }
+  .dialog__actions { position: sticky; bottom: 0; background: var(--surface); padding-top: 10px; }
+  .dialog__actions .btn { flex: 1 1 auto; justify-content: center; }
+}
+
+/* タッチ操作の端末では hover 前提の演出を出さない */
+@media (hover: none) {
+  .btn:hover:not(:disabled) { border-color: var(--border); }
+  .tablist [role="tab"]:hover { background: transparent; color: var(--text-muted); }
+  .tablist [role="tab"][aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
 }

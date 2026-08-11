@@ -12,6 +12,8 @@ import { encodeWav, resample } from './core/wav.js';
 import { clamp, debounce, describeError, formatBytes, formatTime, speakableTime } from './core/util.js';
 import { MAX_RECOMMENDED_BYTES, analyzeMedia, decodeAudioFile, loadVideo, resolveDuration } from './media/decoder.js';
 import { TimelinePlayer } from './media/player.js';
+import { clearSourceFile, isOpfsAvailable, loadSourceFile, saveSourceFile } from './media/storage.js';
+import { createWakeLock } from './media/wakelock.js';
 import { announce, button, confirmDialog, emptyState, errorBox, field, h, infoBox, loading, openDialog, qs, select, slider, toast, toggle } from './ui/dom.js';
 import { createTimeline } from './ui/timeline.js';
 import { createSubtitleEditor } from './ui/subtitleEditor.js';
@@ -41,6 +43,8 @@ const media = {
 
 let analysisController = null;
 let sttApiKey = ''; // メモリ上のみ。保存しない。
+/** 解析・書き出し中に画面が消えないようにする（スマートフォンでは処理が絞られるため） */
+const wakeLock = createWakeLock();
 
 /* ------------------------------------------------------------------ */
 /* 起動                                                                */
@@ -98,6 +102,7 @@ dom.panels.caption.append(captionPanel.element);
 const exportPanel = createExportPanel({
   store,
   getSourceUrl: () => media.url,
+  getSourceFile: () => media.file,
   getBgmBuffer: () => media.bgmBuffer,
   beforeExport: () => media.player?.pause(),
 });
@@ -579,28 +584,7 @@ async function handleFile(file) {
   setPreviewOverlay('素材を読み込んでいます…');
 
   try {
-    media.player?.dispose();
-    media.player = null;
-    if (media.url) URL.revokeObjectURL(media.url);
-
-    const { video, url, meta } = await loadVideo(file);
-    media.file = file;
-    media.url = url;
-    media.video = video;
-    media.monoSamples = null;
-    media.sampleRate = 0;
-
-    media.thumbVideo = document.createElement('video');
-    media.thumbVideo.src = url;
-    media.thumbVideo.muted = true;
-    media.thumbVideo.playsInline = true;
-    await new Promise((resolve) => {
-      media.thumbVideo.addEventListener('loadedmetadata', resolve, { once: true });
-      media.thumbVideo.addEventListener('error', resolve, { once: true });
-    });
-    // 尺が未確定の WebM でもサムネイル用の要素が正しくシークできるようにする
-    await resolveDuration(media.thumbVideo).catch(() => 0);
-
+    const meta = await attachMedia(file);
     store.replace(
       {
         ...store.getState(),
@@ -614,31 +598,79 @@ async function handleFile(file) {
       },
       { label: '素材を読み込み' },
     );
-
-    ensureAudioContext();
-    media.player = new TimelinePlayer({
-      video,
-      canvas: dom.preview,
-      audioContext: media.audioContext,
-      getProject: () => store.getState(),
-      onTime: (t, total) => onPlaybackTime(t, total),
-      onEnded: () => renderTransport(),
-      onError: (error) => toast(describeError(error), { type: 'error' }),
-    });
-    if (media.bgmBuffer) media.player.setBgmBuffer(media.bgmBuffer);
-
-    resizePreviewCanvas();
-    await media.player.seek(0);
-    setPreviewOverlay('');
-    dom.dropzone.hidden = true;
-    thumbnailEditor.refresh();
-    toast(`素材を読み込みました：${meta.name}`, { type: 'success' });
-    announce(`素材を読み込みました。長さ ${speakableTime(meta.duration)}。`);
+    await finishAttach(meta);
+    persistSource(file);
     await runAnalysis({ askAfter: true });
   } catch (error) {
     setPreviewOverlay('');
     renderMediaPanel(errorBox(describeError(error), button('別のファイルを選ぶ', { onClick: () => dom.fileInput.click() })));
     toast(describeError(error), { type: 'error' });
+  }
+}
+
+/**
+ * 素材ファイルを再生・解析できる状態へ接続する（プロジェクトの内容は変更しない）。
+ * 新規読み込みと、保存済み素材からの復帰の両方で使う。
+ */
+async function attachMedia(file) {
+  media.player?.dispose();
+  media.player = null;
+  if (media.url) URL.revokeObjectURL(media.url);
+
+  const { video, url, meta } = await loadVideo(file);
+  media.file = file;
+  media.url = url;
+  media.video = video;
+  media.monoSamples = null;
+  media.sampleRate = 0;
+
+  media.thumbVideo = document.createElement('video');
+  media.thumbVideo.src = url;
+  media.thumbVideo.muted = true;
+  media.thumbVideo.playsInline = true;
+  await new Promise((resolve) => {
+    media.thumbVideo.addEventListener('loadedmetadata', resolve, { once: true });
+    media.thumbVideo.addEventListener('error', resolve, { once: true });
+  });
+  // 尺が未確定の WebM でもサムネイル用の要素が正しくシークできるようにする
+  await resolveDuration(media.thumbVideo).catch(() => 0);
+  return meta;
+}
+
+/** プレビュー・再生エンジンを起こして UI を素材ありの状態にする */
+async function finishAttach(meta) {
+  ensureAudioContext();
+  media.player = new TimelinePlayer({
+    video: media.video,
+    canvas: dom.preview,
+    audioContext: media.audioContext,
+    getProject: () => store.getState(),
+    onTime: (t, total) => onPlaybackTime(t, total),
+    onEnded: () => renderTransport(),
+    onError: (error) => toast(describeError(error), { type: 'error' }),
+  });
+  if (media.bgmBuffer) media.player.setBgmBuffer(media.bgmBuffer);
+
+  resizePreviewCanvas();
+  await media.player.seek(0);
+  setPreviewOverlay('');
+  dom.dropzone.hidden = true;
+  thumbnailEditor.refresh();
+  renderMediaPanel();
+  toast(`素材を読み込みました：${meta.name}`, { type: 'success' });
+  announce(`素材を読み込みました。長さ ${speakableTime(meta.duration)}。`);
+}
+
+/**
+ * 素材を端末に保存しておく。
+ * スマートフォンではタブが頻繁に破棄されるため、これが無いと
+ * 復帰のたびに動画を選び直すことになる。
+ */
+async function persistSource(file) {
+  if (!isOpfsAvailable()) return;
+  const result = await saveSourceFile(file);
+  if (!result.ok && result.reason) {
+    dom.saveStatus.textContent = result.reason;
   }
 }
 
@@ -658,6 +690,7 @@ async function runAnalysis({ askAfter = false } = {}) {
   }
   media.player?.pause();
   analysisController = new AbortController();
+  await wakeLock.request();
   const progress = loading('解析を開始しています…', { determinate: true });
   const cancel = button('キャンセル', { variant: 'danger', onClick: () => analysisController?.abort() });
   renderMediaPanel(h('div.export-progress', {}, [progress.element, cancel]));
@@ -702,6 +735,7 @@ async function runAnalysis({ askAfter = false } = {}) {
     }
   } finally {
     analysisController = null;
+    await wakeLock.release();
   }
 }
 
@@ -1197,7 +1231,7 @@ store.subscribe((state, meta) => {
   saveNow();
 });
 
-function restore() {
+async function restore() {
   const result = persistence.load();
   if (!result.ok) {
     toast(`前回の作業を復元できませんでした：${describeError(result.error)}`, { type: 'error' });
@@ -1205,6 +1239,23 @@ function restore() {
   }
   if (!result.value || !result.value.media) return;
   store.replace(result.value, { label: '復元' });
+
+  // 保存済みの素材があれば、そのまま続きから編集できる
+  const saved = await loadSourceFile().catch(() => null);
+  if (saved) {
+    setPreviewOverlay('前回の続きを復元しています…');
+    try {
+      const meta = await attachMedia(saved);
+      store.commit((draft) => {
+        draft.media = { ...draft.media, ...meta, duration: draft.media?.duration || meta.duration };
+      }, { label: '素材を復元', history: false });
+      await finishAttach(meta);
+      toast('前回の続きから再開できます。', { type: 'success' });
+      return;
+    } catch {
+      await clearSourceFile();
+    }
+  }
   setPreviewOverlay('前回の編集内容を復元しました。同じ動画ファイルを選び直すと再生できます。');
   toast('前回の編集内容を復元しました。動画ファイルを選び直してください。', { type: 'info', duration: 9000 });
 }
@@ -1231,10 +1282,23 @@ window.addEventListener('beforeunload', (event) => {
   }
 });
 
+/**
+ * Service Worker を登録して「ホーム画面に追加」とオフライン起動を可能にする。
+ * 失敗してもアプリは通常どおり動くため、エラーは通知しない。
+ */
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') return;
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
+  });
+}
+
 renderMediaPanel();
 renderEditPanel();
 renderAudioPanel();
 renderTransport();
 resizePreviewCanvas();
+registerServiceWorker();
 restore();
 dom.saveStatus.textContent = persistence.available ? '自動保存は有効です' : 'この環境では自動保存できません';

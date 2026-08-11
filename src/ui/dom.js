@@ -56,6 +56,33 @@ export function applyProps(el, props) {
   return el;
 }
 
+/**
+ * 日本語入力（IME）に対応した input ハンドラを作る。
+ *
+ * 変換中も input イベントは発火するため、そのまま状態へ反映すると
+ * 「かんじ」→「感じ」の途中経過が履歴に残り、確定前の文字列で処理が走ってしまう。
+ * 変換確定（compositionend）まで通知を保留する。
+ *
+ * @param {(value:string, event:Event)=>void} onValue
+ * @returns {object} h() の on に渡すハンドラ群
+ */
+export function imeSafeInput(onValue) {
+  let composing = false;
+  return {
+    compositionstart: () => {
+      composing = true;
+    },
+    compositionend: (event) => {
+      composing = false;
+      onValue(event.target.value, event);
+    },
+    input: (event) => {
+      if (composing) return;
+      onValue(event.target.value, event);
+    },
+  };
+}
+
 export const qs = (selector, root = document) => root.querySelector(selector);
 export const qsa = (selector, root = document) => [...root.querySelectorAll(selector)];
 

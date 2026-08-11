@@ -11,6 +11,7 @@ import { THUMBNAIL_SIZE } from '../core/thumbnail.js';
 import { clamp } from '../core/util.js';
 import { TimelinePlayer } from './player.js';
 import { drawThumbnail } from './render.js';
+import { describeFormat, hasWebCodecs, probeCodecs, renderWithCodecs } from './encoder.js';
 
 const CANDIDATE_TYPES = [
   { mimeType: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2', ext: 'mp4', label: 'MP4 (H.264 / AAC)' },
@@ -29,13 +30,58 @@ export function pickOutputFormat() {
   return null;
 }
 
-export function isExportSupported() {
+export function isMediaRecorderSupported() {
   return (
     typeof MediaRecorder !== 'undefined' &&
     typeof HTMLCanvasElement !== 'undefined' &&
     typeof HTMLCanvasElement.prototype.captureStream === 'function' &&
     pickOutputFormat() !== null
   );
+}
+
+export function isExportSupported() {
+  return hasWebCodecs() || isMediaRecorderSupported();
+}
+
+/**
+ * この環境で使える書き出し方式を決める。
+ *
+ * WebCodecs が使えるなら「実時間に縛られない」方式を優先する。
+ * スマートフォンでは録画中の画面ロックやアプリ切り替えで MediaRecorder が壊れるため、
+ * この差は品質ではなく成否に直結する。
+ *
+ * @returns {Promise<{mode:'webcodecs'|'mediarecorder'|null, ext:string, label:string,
+ *                    realtime:boolean, reason:string}>}
+ */
+export async function resolveExportPlan({ width, height, fps = 30, needsAudio = true } = {}) {
+  if (hasWebCodecs()) {
+    try {
+      const probe = await probeCodecs({ width, height, fps, needsAudio });
+      if (probe.usable) {
+        return {
+          mode: 'webcodecs',
+          ext: 'mp4',
+          // 実際に選ばれたコーデックを表示する（環境によって H.264/AAC とは限らない）
+          label: describeFormat(probe.video, probe.audio),
+          realtime: false,
+          reason: '',
+        };
+      }
+      const fallback = mediaRecorderPlan();
+      return { ...fallback, reason: probe.reason };
+    } catch {
+      return mediaRecorderPlan();
+    }
+  }
+  return mediaRecorderPlan();
+}
+
+function mediaRecorderPlan() {
+  const format = pickOutputFormat();
+  if (!format) {
+    return { mode: null, ext: '', label: '未対応', realtime: false, reason: 'この環境では動画を書き出せません。' };
+  }
+  return { mode: 'mediarecorder', ext: format.ext, label: format.label, realtime: true, reason: '' };
 }
 
 function abortError() {
@@ -52,6 +98,27 @@ function abortError() {
  * @returns {Promise<{blob:Blob, format:object, durationSec:number}>}
  */
 export async function renderVideo(opt) {
+  const project = opt.project;
+  const plan = opt.plan || (await resolveExportPlan({
+    width: opt.width || project.media?.width,
+    height: opt.height || project.media?.height,
+    fps: opt.fps || project.media?.fps || 30,
+    needsAudio: project.media?.hasAudio !== false || Boolean(opt.bgmBuffer),
+  }));
+
+  if (plan.mode === 'webcodecs') {
+    return renderWithCodecs(opt);
+  }
+  if (plan.mode === null) {
+    throw new Error('このブラウザは動画の書き出しに対応していません。');
+  }
+  return renderVideoWithMediaRecorder(opt);
+}
+
+/**
+ * 従来方式（実時間録画）。WebCodecs が使えない環境向けのフォールバック。
+ */
+export async function renderVideoWithMediaRecorder(opt) {
   const format = pickOutputFormat();
   if (!format) throw new Error('このブラウザは動画の書き出しに対応していません（MediaRecorder 非対応）。');
   const project = opt.project;

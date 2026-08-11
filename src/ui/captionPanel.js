@@ -4,7 +4,8 @@
 
 import { PLATFORMS, TONES, generateCaption } from '../core/captions.js';
 import { timelineDuration } from '../core/autoedit.js';
-import { button, copyToClipboard, h, infoBox, select, toast, toggle } from './dom.js';
+import { button, copyToClipboard, h, imeSafeInput, infoBox, select, toast, toggle } from './dom.js';
+import { shareText } from '../media/share.js';
 import { downloadText } from '../media/exporter.js';
 import { sanitizeFilename } from './thumbnailEditor.js';
 
@@ -12,14 +13,12 @@ export function createCaptionPanel({ store }) {
   const output = h('textarea.caption-output', {
     rows: 14,
     attrs: { 'aria-label': '生成されたキャプション', spellcheck: 'false' },
-    on: {
-      input: (e) => {
-        store.commit((draft) => {
-          draft.caption.text = e.target.value;
-        }, { label: 'キャプション編集', history: false });
-        updateCounter();
-      },
-    },
+    on: imeSafeInput((value) => {
+      store.commit((draft) => {
+        draft.caption.text = value;
+      }, { label: 'キャプション編集', history: false });
+      updateCounter();
+    }),
   });
   const counter = h('p.caption-counter', { attrs: { role: 'status', 'aria-live': 'polite' } });
   const noticeHost = h('div');
@@ -47,6 +46,22 @@ export function createCaptionPanel({ store }) {
           toast(ok ? 'キャプションをコピーしました。' : 'コピーに失敗しました。手動で選択してください。', {
             type: ok ? 'success' : 'error',
           });
+        },
+      }),
+      button('📤 共有', {
+        onClick: async () => {
+          const text = output.value;
+          if (!text.trim()) {
+            toast('共有する内容がありません。', { type: 'error' });
+            return;
+          }
+          const result = await shareText({ title: store.getState().name, text });
+          if (result.method === 'unsupported') {
+            const ok = await copyToClipboard(text);
+            toast(ok ? '共有に対応していないためコピーしました。' : 'コピーに失敗しました。', { type: ok ? 'success' : 'error' });
+          } else if (result.method === 'share') {
+            toast('キャプションを共有しました。', { type: 'success' });
+          }
         },
       }),
       button('テキストファイルで保存', {

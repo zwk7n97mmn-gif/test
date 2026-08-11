@@ -17,6 +17,9 @@ const MIME = {
   '.png': 'image/png',
   '.ico': 'image/x-icon',
   '.map': 'application/json',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
+  '.webm': 'video/webm',
+  '.mp4': 'video/mp4',
 };
 
 const server = createServer((req, res) => {

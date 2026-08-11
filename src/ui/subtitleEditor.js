@@ -4,9 +4,9 @@
 
 import { charsPerSecond, normalizeCues, parseSubtitles, shiftCues, validateCues } from '../core/subtitles.js';
 import { clamp, ellipsize, formatTime, parseTime, uid } from '../core/util.js';
-import { button, confirmDialog, emptyState, h, toast } from './dom.js';
+import { button, confirmDialog, emptyState, h, imeSafeInput, toast } from './dom.js';
 
-const ROW_HEIGHT = 108;
+const ROW_HEIGHT = 132; // タップ領域 44px を確保した行の高さ
 const OVERSCAN = 4;
 
 export function createSubtitleEditor({ store, onSeek, onAutoGenerate }) {
@@ -218,7 +218,7 @@ export function createSubtitleEditor({ store, onSeek, onAutoGenerate }) {
         maxlength: '10000',
       },
       on: {
-        input: (e) => updateCue(cue.id, { text: e.target.value }, { history: false }),
+        ...imeSafeInput((value) => updateCue(cue.id, { text: value }, { history: false })),
         change: (e) => updateCue(cue.id, { text: e.target.value }),
         keydown: (e) => {
           if (e.altKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {

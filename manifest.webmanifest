@@ -1,0 +1,26 @@
+{
+  "name": "Kirinuki Studio — 自動字幕・自動編集",
+  "short_name": "Kirinuki",
+  "description": "スマートフォンだけで完結する動画編集ツール。素材を解析して字幕・カット・音声を自動で付け、サムネイルとSNSキャプションまで作成できます。",
+  "lang": "ja",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "id": "kirinuki-studio",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#101418",
+  "theme_color": "#101418",
+  "categories": ["video", "productivity", "utilities"],
+  "icons": [
+    { "src": "./assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "share_target": {
+    "action": "./",
+    "method": "GET",
+    "params": {}
+  }
+}

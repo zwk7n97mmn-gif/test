@@ -2,9 +2,16 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="ブラウザだけで動く動画編集ツール。素材を解析して字幕・カット・音声処理を自動化し、サムネイルとSNSキャプションまで作成できます。">
   <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#101418">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Kirinuki">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png">
   <title>Kirinuki Studio — 自動字幕・自動編集・サムネイル作成</title>
   <link rel="stylesheet" href="./src/styles.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🎬</text></svg>">
@@ -13,7 +20,7 @@
   <a class="skip-link" href="#main">本文へスキップ</a>
 
   <header class="app-header">
-    <h1 class="app-title">🎬 Kirinuki Studio</h1>
+    <h1 class="app-title">🎬 Kirinuki<span class="app-title__full"> Studio</span></h1>
 
     <div class="app-header__project">
       <label class="sr-only" for="project-name">プロジェクト名</label>
@@ -61,13 +68,13 @@
 
     <aside class="sidebar" aria-label="編集パネル">
       <div class="tablist" role="tablist" aria-label="機能の切り替え">
-        <button id="tab-media"     role="tab" type="button" aria-selected="true"  aria-controls="panel-media"     aria-keyshortcuts="1">素材・解析</button>
-        <button id="tab-subtitles" role="tab" type="button" aria-selected="false" aria-controls="panel-subtitles" aria-keyshortcuts="2" tabindex="-1">字幕</button>
-        <button id="tab-edit"      role="tab" type="button" aria-selected="false" aria-controls="panel-edit"      aria-keyshortcuts="3" tabindex="-1">編集</button>
-        <button id="tab-audio"     role="tab" type="button" aria-selected="false" aria-controls="panel-audio"     aria-keyshortcuts="4" tabindex="-1">音声</button>
-        <button id="tab-thumbnail" role="tab" type="button" aria-selected="false" aria-controls="panel-thumbnail" aria-keyshortcuts="5" tabindex="-1">サムネイル</button>
-        <button id="tab-caption"   role="tab" type="button" aria-selected="false" aria-controls="panel-caption"   aria-keyshortcuts="6" tabindex="-1">キャプション</button>
-        <button id="tab-export"    role="tab" type="button" aria-selected="false" aria-controls="panel-export"    aria-keyshortcuts="7" tabindex="-1">書き出し</button>
+        <button id="tab-media" role="tab" type="button" aria-selected="true" aria-controls="panel-media" aria-keyshortcuts="1"><span class="tab__icon" aria-hidden="true">🎞</span><span class="tab__label">素材</span></button>
+        <button id="tab-subtitles" role="tab" type="button" aria-selected="false" aria-controls="panel-subtitles" aria-keyshortcuts="2" tabindex="-1"><span class="tab__icon" aria-hidden="true">💬</span><span class="tab__label">字幕</span></button>
+        <button id="tab-edit" role="tab" type="button" aria-selected="false" aria-controls="panel-edit" aria-keyshortcuts="3" tabindex="-1"><span class="tab__icon" aria-hidden="true">✂️</span><span class="tab__label">編集</span></button>
+        <button id="tab-audio" role="tab" type="button" aria-selected="false" aria-controls="panel-audio" aria-keyshortcuts="4" tabindex="-1"><span class="tab__icon" aria-hidden="true">🔊</span><span class="tab__label">音声</span></button>
+        <button id="tab-thumbnail" role="tab" type="button" aria-selected="false" aria-controls="panel-thumbnail" aria-keyshortcuts="5" tabindex="-1"><span class="tab__icon" aria-hidden="true">🖼</span><span class="tab__label">サムネ</span></button>
+        <button id="tab-caption" role="tab" type="button" aria-selected="false" aria-controls="panel-caption" aria-keyshortcuts="6" tabindex="-1"><span class="tab__icon" aria-hidden="true">📝</span><span class="tab__label">投稿文</span></button>
+        <button id="tab-export" role="tab" type="button" aria-selected="false" aria-controls="panel-export" aria-keyshortcuts="7" tabindex="-1"><span class="tab__icon" aria-hidden="true">📤</span><span class="tab__label">書き出し</span></button>
       </div>
 
       <div id="panel-media"     class="panel" role="tabpanel" tabindex="0" aria-labelledby="tab-media"><h2>素材・解析</h2></div>

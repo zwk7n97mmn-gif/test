@@ -7,6 +7,8 @@ import { clamp } from '../core/util.js';
 
 export const SUPPORTED_TYPES = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-matroska', 'video/ogg'];
 export const MAX_RECOMMENDED_BYTES = 2 * 1024 ** 3;
+/** 解析するフレーム数の上限（長尺でメモリと解析時間が発散しないようにする） */
+export const MAX_ANALYSIS_FRAMES = 1200;
 
 /**
  * File から <video> を作り、メタデータを取得する。
@@ -147,23 +149,55 @@ export async function estimateFps(video, timeoutMs = 1500) {
 }
 
 /**
- * 音声トラックをデコードする。音声が無い / 対応外の場合は null を返す（例外にしない）。
+ * 解析に使うサンプルレート。
+ *
+ * 発話区間の検出・ラウドネス測定・STT 送信のいずれも 16kHz で十分であり、
+ * 48kHz のまま展開すると 10 分のステレオ素材だけで約 230MB を消費して
+ * スマートフォンのタブが強制終了される。ここで 1/12 に落とす。
+ */
+export const ANALYSIS_SAMPLE_RATE = 16000;
+
+/**
+ * 音声トラックを解析用に低いサンプルレートでデコードする。
+ * 音声が無い / 対応外 / メモリ不足でも例外にせず理由を返す。
+ *
  * @returns {Promise<{buffer:AudioBuffer|null, reason:string}>}
  */
-export async function decodeAudio(file, audioContext) {
+export async function decodeAudio(file, audioContext, sampleRate = ANALYSIS_SAMPLE_RATE) {
   if (!file) return { buffer: null, reason: 'ファイルがありません。' };
+  const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
   const Ctx = audioContext?.constructor || window.AudioContext || window.webkitAudioContext;
-  if (!Ctx) return { buffer: null, reason: 'この環境では音声を解析できません。' };
-  const ctx = audioContext || new Ctx();
+  if (!Offline && !Ctx) return { buffer: null, reason: 'この環境では音声を解析できません。' };
+
+  let arrayBuffer;
   try {
-    const arrayBuffer = await file.arrayBuffer();
+    arrayBuffer = await file.arrayBuffer();
+  } catch {
+    return {
+      buffer: null,
+      reason: 'ファイルが大きすぎて読み込めませんでした。短く分割するか、解像度を下げた素材でお試しください。',
+    };
+  }
+
+  // OfflineAudioContext に渡すと、その文脈のサンプルレートへリサンプルして返る
+  if (Offline) {
+    try {
+      const ctx = new Offline(1, 1, sampleRate);
+      const buffer = await ctx.decodeAudioData(arrayBuffer);
+      if (buffer && buffer.length) return { buffer, reason: '' };
+    } catch {
+      /* 元のサンプルレートで再試行する */
+    }
+  }
+  try {
+    const ctx = audioContext || new Ctx();
     const buffer = await ctx.decodeAudioData(arrayBuffer);
     if (!buffer || buffer.length === 0) return { buffer: null, reason: '音声トラックが見つかりませんでした。' };
     return { buffer, reason: '' };
   } catch {
     return {
       buffer: null,
-      reason: '音声トラックをデコードできませんでした（音声なし、または非対応コーデック）。映像のみで続行します。',
+      reason: '音声トラックをデコードできませんでした（音声なし、非対応コーデック、またはメモリ不足）。映像のみで続行します。',
     };
   }
 }
@@ -276,7 +310,8 @@ export async function analyzeMedia({ file, video, duration, audioContext, signal
   stage('フレームを解析中…', 0.45);
   const frames = await sampleFrames(video, {
     duration,
-    intervalSec: duration > 600 ? 0.5 : 0.25,
+    // 長尺でもフレーム数の上限を超えないよう間隔を自動的に広げる（メモリと時間の上限）
+    intervalSec: clamp(duration / MAX_ANALYSIS_FRAMES, 0.25, 3),
     signal,
     onProgress: (r) => stage('フレームを解析中…', 0.45 + r * 0.45),
   });
