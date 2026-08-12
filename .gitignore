@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.render-check/
+
+# `npm run fetch:models` が生成する実行時アセット（合計約15MB）。
+# リポジトリには含めず、セットアップ時に取得する。
+public/models/
+public/mediapipe/
+
+*.log
+.DS_Store
+.vite/
+
+# TypeScript のビルド情報
+*.tsbuildinfo

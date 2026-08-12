@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>描画確認 — Motion Muse</title>
+    <link rel="icon" href="data:," />
+    <style>
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #14121c;
+        color: #f4f1fa;
+        font-family: system-ui, sans-serif;
+      }
+      #grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1 style="font-size: 18px">描画確認ページ（開発用）</h1>
+    <div id="grid"></div>
+    <script type="module" src="/src/dev/renderCheck.ts"></script>
+  </body>
+</html>
