@@ -2,12 +2,15 @@ import type { AudioAnalysis } from '../audio/types';
 import { sampleClip, type MotionClip, type MotionFrame } from '../pose/types';
 import { canvasSize, type Project } from '../project/types';
 import { withAlpha } from '../util/color';
+import type { AvatarRig } from '../character/avatarRetarget';
 import { getStage, isWebGLAvailable, recoverStageIfLost } from './stage';
 
 export interface RenderInput {
   project: Project;
   clip: MotionClip | null;
   analysis: AudioAnalysis | null;
+  /** 読み込み済みの外部アバター。未指定なら内蔵キャラクターを使う。 */
+  avatar?: AvatarRig | null;
 }
 
 /** 「まだ素材が無い」ことを画面上で伝えるための状態。 */
@@ -68,7 +71,7 @@ export function renderFrame(
       return { emptyReason: null, error: null };
     }
     stage.setSize(width, height);
-    stage.render({ project, frame, analysis, time, beat, bass });
+    stage.render({ project, frame, analysis, time, beat, bass, avatar: input.avatar ?? null });
     ctx.drawImage(stage.canvas, 0, 0, width, height);
   } catch (err) {
     drawFallback(ctx, width, height, project);

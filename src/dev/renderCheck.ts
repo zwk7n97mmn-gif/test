@@ -3,7 +3,11 @@
  * アプリ本体の機能ではなく、3D キャラクターと合成処理が壊れていないかを
  * ブラウザ上で一目で確認するためのもの。`npm run check:visual` から利用する。
  */
+import * as THREE from 'three';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { createSampleAppearances, createDefaultAppearance } from '../lib/character/appearance';
+import { loadAvatar } from '../lib/character/avatar';
+import type { AvatarRig } from '../lib/character/avatarRetarget';
 import { JOINT_COUNT, JOINT_INDEX, type JointName, type MotionClip, type MotionFrame } from '../lib/pose/types';
 import { createProject } from '../lib/project/types';
 import { renderFrame } from '../lib/render/composer';
@@ -121,7 +125,85 @@ function makeCanvas(width: number, height: number, label: string): HTMLCanvasEle
   return canvas;
 }
 
-function main(): void {
+/**
+ * 検証用のヒューマノイドを組み立てて GLB として書き出す。
+ *
+ * 実在の VRM ファイルを同梱せずに「読み込み → ボーン推定 → リターゲット → 描画」の
+ * 経路を丸ごと確認するために使う。ボーン名は Mixamo 互換にしてある。
+ */
+async function makeTestAvatarBlob(): Promise<Blob> {
+  const skin = new THREE.MeshStandardMaterial({ color: 0xd9a389, roughness: 0.75 });
+  const cloth = new THREE.MeshStandardMaterial({ color: 0x3c4a6b, roughness: 0.85 });
+
+  const bone = (name: string, x: number, y: number, z: number, parent: THREE.Object3D) => {
+    const object = new THREE.Object3D();
+    object.name = name;
+    object.position.set(x, y, z);
+    parent.add(object);
+    return object;
+  };
+  /** ボーンの根元から子ボーンまでを埋めるカプセルを付ける */
+  const limb = (from: THREE.Object3D, child: THREE.Object3D, radius: number, material: THREE.Material) => {
+    const offset = child.position.clone();
+    const length = offset.length();
+    const mesh = new THREE.Mesh(
+      new THREE.CapsuleGeometry(radius, Math.max(0.01, length - radius * 2), 4, 12),
+      material,
+    );
+    mesh.name = `${from.name}_mesh`;
+    mesh.position.copy(offset).multiplyScalar(0.5);
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), offset.clone().normalize());
+    from.add(mesh);
+    return mesh;
+  };
+
+  const model = new THREE.Group();
+  model.name = 'Armature';
+
+  const hips = bone('Hips', 0, 0.95, 0, model);
+  const spine = bone('Spine', 0, 0.14, 0, hips);
+  const chest = bone('Chest', 0, 0.21, 0, spine);
+  const neck = bone('Neck', 0, 0.16, 0, chest);
+  const head = bone('Head', 0, 0.11, 0, neck);
+
+  // 胴・頭
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, 0.28, 4, 16), cloth);
+  torso.position.y = 0.1;
+  torso.scale.z = 0.7;
+  spine.add(torso);
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.1, 20, 16), skin);
+  skull.position.y = 0.06;
+  head.add(skull);
+  // 顔の向きが分かるよう鼻を付ける（+Z が正面）
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.028, 10, 8), skin);
+  nose.position.set(0, 0.05, 0.095);
+  head.add(nose);
+
+  for (const side of ['Left', 'Right'] as const) {
+    const dir = side === 'Left' ? 1 : -1;
+    const upperArm = bone(`${side}Arm`, dir * 0.17, 0.09, 0, chest);
+    const lowerArm = bone(`${side}ForeArm`, dir * 0.26, 0, 0, upperArm);
+    const hand = bone(`${side}Hand`, dir * 0.24, 0, 0, lowerArm);
+    limb(upperArm, lowerArm, 0.05, skin);
+    limb(lowerArm, hand, 0.045, skin);
+    hand.add(new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 10), skin));
+
+    const thigh = bone(`${side}UpLeg`, dir * 0.09, -0.06, 0, hips);
+    const calf = bone(`${side}Leg`, 0, -0.42, 0, thigh);
+    const foot = bone(`${side}Foot`, 0, -0.4, 0, calf);
+    limb(thigh, calf, 0.07, cloth);
+    limb(calf, foot, 0.055, skin);
+    const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.06, 0.18), cloth);
+    shoe.position.set(0, -0.02, 0.04);
+    foot.add(shoe);
+  }
+
+  const exporter = new GLTFExporter();
+  const glb = (await exporter.parseAsync(model, { binary: true })) as ArrayBuffer;
+  return new Blob([glb], { type: 'model/gltf-binary' });
+}
+
+async function main(): Promise<void> {
   const clip = syntheticClip();
   const analysis = syntheticAnalysis();
 
@@ -202,6 +284,30 @@ function main(): void {
     const canvas = makeCanvas(420, 720, '左右反転');
     const ctx = canvas.getContext('2d', { alpha: false })!;
     renderFrame(ctx, 0.28, { project, clip, analysis });
+  }
+
+  // 4.5) 外部アバター（読み込み → ボーン推定 → リターゲット → 描画の一気通貫）
+  {
+    let rig: AvatarRig | null = null;
+    let label = '外部アバター';
+    try {
+      const blob = await makeTestAvatarBlob();
+      const loaded = await loadAvatar(blob, 'test-avatar.glb');
+      rig = loaded.rig;
+      label = `外部アバター（${loaded.boneCount} ボーン / ${loaded.mappingSource}）`;
+    } catch (err) {
+      console.error('テスト用アバターの読み込みに失敗しました', err);
+    }
+
+    for (let i = 0; i < 3; i++) {
+      const project = createProject({ appearance: appearances[0] });
+      project.avatarId = rig ? 'test' : null;
+      project.timing = { ...project.timing, mode: 'original', loop: true };
+      project.effects = { ...project.effects, particles: 0 };
+      const canvas = makeCanvas(420, 720, `${label} ${i + 1}/3`);
+      const ctx = canvas.getContext('2d', { alpha: false })!;
+      renderFrame(ctx, (i / 3) * clip.duration, { project, clip, analysis, avatar: rig });
+    }
   }
 
   // 5) 空状態（モーション未設定）

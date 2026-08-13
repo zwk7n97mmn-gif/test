@@ -1,5 +1,6 @@
 import type { AudioAnalysis } from '../audio/types';
 import { getAudioContext, resumeAudioContext } from '../audio/decode';
+import type { AvatarRig } from '../character/avatarRetarget';
 import type { MotionClip } from '../pose/types';
 import { canvasSize, type Project } from '../project/types';
 import { effectiveRange, renderFrame } from '../render/composer';
@@ -23,6 +24,8 @@ export interface ExportOptions {
   project: Project;
   clip: MotionClip | null;
   analysis: AudioAnalysis | null;
+  /** 読み込み済みの外部アバター（未指定なら内蔵キャラクター） */
+  avatar?: AvatarRig | null;
   /** 音声を含める場合に渡す。null なら無音の映像のみ。 */
   audioBuffer: AudioBuffer | null;
   onProgress?: (progress: ExportProgress) => void;
@@ -78,6 +81,7 @@ export function checkExportSupport(): { supported: true } | { supported: false; 
  */
 export async function exportVideo(options: ExportOptions): Promise<ExportResult> {
   const { project, clip, analysis, audioBuffer, onProgress, signal } = options;
+  const avatar = options.avatar ?? null;
 
   const support = checkExportSupport();
   if (!support.supported) {
@@ -157,7 +161,7 @@ export async function exportVideo(options: ExportOptions): Promise<ExportResult>
 
   try {
     // 最初のフレームを描いてから録画を開始する（先頭の黒フレームを防ぐ）
-    renderFrame(ctx, start, { project, clip, analysis });
+    renderFrame(ctx, start, { project, clip, analysis, avatar });
     recorder.start(1000);
     const startedAt = performance.now();
     if (sourceNode && audioBuffer) {
@@ -176,7 +180,7 @@ export async function exportVideo(options: ExportOptions): Promise<ExportResult>
           resolve();
           return;
         }
-        renderFrame(ctx, time, { project, clip, analysis });
+        renderFrame(ctx, time, { project, clip, analysis, avatar });
         onProgress?.({
           ratio: Math.min(1, elapsed / totalTime),
           message: '書き出し中…（プレビューと同じ速度で処理しています）',

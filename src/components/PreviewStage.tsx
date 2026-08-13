@@ -17,7 +17,7 @@ const PREVIEW_HEIGHT = 720;
  * 描画は renderFrame（時刻の純関数）に委ねているため、書き出し結果と絵が一致する。
  */
 export function PreviewStage() {
-  const { project, getAudioBuffer, renderBusy } = useWorkspace();
+  const { project, getAudioBuffer, renderBusy, avatarRig } = useWorkspace();
   const { clip, audio, analysis } = useCurrentAssets();
   const toast = useToast();
 
@@ -135,7 +135,7 @@ export function PreviewStage() {
         }
       }
 
-      const result = renderFrame(ctx, timeRef.current, { project, clip, analysis });
+      const result = renderFrame(ctx, timeRef.current, { project, clip, analysis, avatar: avatarRig });
       const next: typeof notice = result.error
         ? { kind: 'error', text: result.error }
         : result.emptyReason === 'no-motion'
@@ -154,7 +154,7 @@ export function PreviewStage() {
 
     rafId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafId);
-  }, [project, clip, analysis, range.end, stopAudio, renderBusy]);
+  }, [project, clip, analysis, range.end, stopAudio, renderBusy, avatarRig]);
 
   useEffect(() => () => stopAudio(), [stopAudio]);
 

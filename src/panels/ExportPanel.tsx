@@ -30,7 +30,7 @@ async function shareFile(file: File): Promise<boolean> {
 }
 
 export function ExportPanel() {
-  const { project, getAudioBuffer, setAudioBuffer, storage, setRenderBusy } = useWorkspace();
+  const { project, getAudioBuffer, setAudioBuffer, storage, setRenderBusy, avatarRig } = useWorkspace();
   const { clip, audio, analysis } = useCurrentAssets();
   const toast = useToast();
 
@@ -65,6 +65,7 @@ export function ExportPanel() {
         project,
         clip,
         analysis,
+        avatar: avatarRig,
         audioBuffer: buffer,
         monitor,
         signal: controller.signal,

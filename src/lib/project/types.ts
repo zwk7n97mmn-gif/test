@@ -72,6 +72,10 @@ export interface Project {
   motionClipId: string | null;
   /** 参照するオーディオ資産のID（未選択なら null） */
   audioAssetId: string | null;
+  /** 参照する 3D アバターのID。null なら内蔵キャラクターを使う。 */
+  avatarId: string | null;
+  /** アバターの正面向きを反転する。null なら自動判定に従う。 */
+  avatarFlipFacing: boolean | null;
   canvas: { presetId: CanvasPresetId; fps: number };
   /** 書き出し区間（秒）。null の場合は音源全体。 */
   range: { start: number; end: number } | null;
@@ -91,6 +95,8 @@ export function createProject(overrides: Partial<Project> = {}): Project {
     appearance: createDefaultAppearance(),
     motionClipId: null,
     audioAssetId: null,
+    avatarId: null,
+    avatarFlipFacing: null,
     canvas: { presetId: 'vertical', fps: 30 },
     range: null,
     timing: {
@@ -156,6 +162,8 @@ export function sanitizeProject(input: unknown): Project {
     appearance: sanitizeAppearance((raw.appearance ?? {}) as Partial<CharacterAppearance>),
     motionClipId: typeof raw.motionClipId === 'string' ? raw.motionClipId : null,
     audioAssetId: typeof raw.audioAssetId === 'string' ? raw.audioAssetId : null,
+    avatarId: typeof raw.avatarId === 'string' ? raw.avatarId : null,
+    avatarFlipFacing: typeof raw.avatarFlipFacing === 'boolean' ? raw.avatarFlipFacing : null,
     canvas: { presetId, fps: [24, 30, 60].includes(Number(raw.canvas?.fps)) ? Number(raw.canvas?.fps) : 30 },
     range,
     timing: {

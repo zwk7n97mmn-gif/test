@@ -9,9 +9,11 @@ import {
   type ReactNode,
 } from 'react';
 import { createSampleAppearances, type CharacterAppearance } from '../lib/character/appearance';
+import { loadAvatar } from '../lib/character/avatar';
+import { disposeAvatarRig, type AvatarRig } from '../lib/character/avatarRetarget';
 import type { MotionClip } from '../lib/pose/types';
 import { createProject, sanitizeProject, type Project } from '../lib/project/types';
-import { db, estimateStorage, type AudioAsset } from '../lib/storage/db';
+import { db, estimateStorage, type AudioAsset, type AvatarAsset } from '../lib/storage/db';
 import type { TrendEntry } from '../lib/trend/import';
 
 export type LoadStatus = 'loading' | 'ready' | 'error';
@@ -45,6 +47,15 @@ interface WorkspaceValue {
   saveCharacterPreset: (appearance: CharacterAppearance) => Promise<void>;
   removeCharacterPreset: (id: string) => Promise<void>;
 
+  // --- 外部アバター（VRM / glTF） ---
+  avatars: AvatarAsset[];
+  addAvatar: (asset: AvatarAsset) => Promise<void>;
+  removeAvatar: (id: string) => Promise<void>;
+  /** 現在のプロジェクトで使うアバター。読み込み中・未使用なら null。 */
+  avatarRig: AvatarRig | null;
+  avatarStatus: 'idle' | 'loading' | 'ready' | 'error';
+  avatarError: string | null;
+
   setTrends: (entries: TrendEntry[]) => void;
   refreshStorage: () => void;
 
@@ -71,6 +82,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [trends, setTrendState] = useState<TrendEntry[]>([]);
   const [storage, setStorage] = useState<{ usage: number; quota: number } | null>(null);
   const [renderBusy, setRenderBusy] = useState(false);
+  const [avatars, setAvatars] = useState<AvatarAsset[]>([]);
+  const [avatarRig, setAvatarRig] = useState<AvatarRig | null>(null);
+  const [avatarStatus, setAvatarStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [avatarError, setAvatarError] = useState<string | null>(null);
 
   const audioBuffers = useRef(new Map<string, AudioBuffer>());
   const saveTimer = useRef<number | null>(null);
@@ -83,13 +98,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        const [loadedProjects, loadedClips, loadedAudio, loadedCharacters, lastId] = await Promise.all([
-          db.listProjects(),
-          db.listClips(),
-          db.listAudio(),
-          db.listCharacters(),
-          db.getMeta<string>(LAST_PROJECT_KEY),
-        ]);
+        const [loadedProjects, loadedClips, loadedAudio, loadedCharacters, loadedAvatars, lastId] =
+          await Promise.all([
+            db.listProjects(),
+            db.listClips(),
+            db.listAudio(),
+            db.listCharacters(),
+            db.listAvatars(),
+            db.getMeta<string>(LAST_PROJECT_KEY),
+          ]);
         if (cancelled) return;
 
         let nextProjects = loadedProjects.map(sanitizeProject);
@@ -114,6 +131,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         setClips(loadedClips);
         setAudioAssets(loadedAudio);
         setCharacters(nextCharacters);
+        setAvatars(loadedAvatars);
         const preferred = nextProjects.find((p) => p.id === lastId?.value) ?? nextProjects[0];
         setCurrentId(preferred?.id ?? null);
         setStatus('ready');
@@ -249,6 +267,32 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [refreshStorage],
   );
 
+  const addAvatar = useCallback(
+    async (asset: AvatarAsset) => {
+      await db.saveAvatar(asset);
+      setAvatars((prev) => [asset, ...prev.filter((a) => a.id !== asset.id)]);
+      refreshStorage();
+    },
+    [refreshStorage],
+  );
+
+  const removeAvatar = useCallback(
+    async (id: string) => {
+      await db.deleteAvatar(id);
+      setAvatars((prev) => prev.filter((a) => a.id !== id));
+      setProjects((prev) =>
+        prev.map((p) => {
+          if (p.avatarId !== id) return p;
+          const next = { ...p, avatarId: null, updatedAt: Date.now() };
+          void db.saveProject(next);
+          return next;
+        }),
+      );
+      refreshStorage();
+    },
+    [refreshStorage],
+  );
+
   const saveCharacterPreset = useCallback(async (appearance: CharacterAppearance) => {
     await db.saveCharacter(appearance);
     setCharacters((prev) => [appearance, ...prev.filter((c) => c.id !== appearance.id)]);
@@ -258,6 +302,51 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     await db.deleteCharacter(id);
     setCharacters((prev) => prev.filter((c) => c.id !== id));
   }, []);
+
+  // 選択中のアバターを読み込む。切り替え・解除のたびに前のリグを破棄する。
+  const avatarId = project?.avatarId ?? null;
+  useEffect(() => {
+    let cancelled = false;
+    if (!avatarId) {
+      setAvatarRig((prev) => {
+        if (prev) disposeAvatarRig(prev);
+        return null;
+      });
+      setAvatarStatus('idle');
+      setAvatarError(null);
+      return;
+    }
+    setAvatarStatus('loading');
+    setAvatarError(null);
+    (async () => {
+      try {
+        const asset = await db.getAvatar(avatarId);
+        if (!asset) throw new Error('保存されたアバターが見つかりませんでした。');
+        const loaded = await loadAvatar(asset.blob, asset.fileName);
+        if (cancelled) {
+          disposeAvatarRig(loaded.rig);
+          return;
+        }
+        setAvatarRig((prev) => {
+          if (prev) disposeAvatarRig(prev);
+          return loaded.rig;
+        });
+        setAvatarStatus('ready');
+      } catch (err) {
+        if (cancelled) return;
+        console.error(err);
+        setAvatarRig((prev) => {
+          if (prev) disposeAvatarRig(prev);
+          return null;
+        });
+        setAvatarError(err instanceof Error ? err.message : 'アバターを読み込めませんでした。');
+        setAvatarStatus('error');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [avatarId]);
 
   const value: WorkspaceValue = {
     status,
@@ -288,6 +377,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     refreshStorage,
     renderBusy,
     setRenderBusy,
+    avatars,
+    addAvatar,
+    removeAvatar,
+    avatarRig,
+    avatarStatus,
+    avatarError,
   };
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;

@@ -4,13 +4,14 @@ import type { MotionClip } from '../pose/types';
 import type { Project } from '../project/types';
 
 const DB_NAME = 'motion-muse';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export const STORES = {
   projects: 'projects',
   clips: 'clips',
   audio: 'audio',
   characters: 'characters',
+  avatars: 'avatars',
   meta: 'meta',
 } as const;
 
@@ -36,6 +37,19 @@ export interface TrendMeta {
   metric?: number;
   region?: string;
   sourceNote: string;
+}
+
+/** 読み込んだ 3D アバター（VRM / glTF）の保存形式。 */
+export interface AvatarAsset {
+  id: string;
+  name: string;
+  fileName: string;
+  size: number;
+  kind: 'vrm' | 'gltf';
+  /** 対応付けできたヒューマノイドボーン数 */
+  boneCount: number;
+  blob: Blob;
+  createdAt: number;
 }
 
 export class StorageError extends Error {
@@ -145,6 +159,13 @@ export const db = {
   saveCharacter: (character: CharacterAppearance) =>
     withStore(STORES.characters, 'readwrite', (s) => s.put(character)),
   deleteCharacter: (id: string) => withStore(STORES.characters, 'readwrite', (s) => s.delete(id)),
+
+  // --- アバター -----------------------------------------------------------
+  listAvatars: () => getAll<AvatarAsset>(STORES.avatars),
+  getAvatar: (id: string) =>
+    withStore<AvatarAsset | undefined>(STORES.avatars, 'readonly', (s) => s.get(id) as IDBRequest<AvatarAsset | undefined>),
+  saveAvatar: (asset: AvatarAsset) => withStore(STORES.avatars, 'readwrite', (s) => s.put(asset)),
+  deleteAvatar: (id: string) => withStore(STORES.avatars, 'readwrite', (s) => s.delete(id)),
 
   // --- メタ情報 -----------------------------------------------------------
   getMeta: <T>(key: string) =>

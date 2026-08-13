@@ -1,5 +1,7 @@
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { AudioAnalysis } from '../audio/types';
+import { applyPoseToAvatar, type AvatarRig } from '../character/avatarRetarget';
 import { buildRig, type CharacterAppearance } from '../character/appearance';
 import { Humanoid } from '../character/humanoid';
 import { retarget, lowestPoint } from '../character/retarget';
@@ -25,6 +27,8 @@ export interface StageUpdate {
   beat: number;
   /** 0..1 の低域エネルギー */
   bass: number;
+  /** 読み込み済みの外部アバター。指定時は内蔵キャラクターの代わりに使う。 */
+  avatar: AvatarRig | null;
 }
 
 const MAX_PARTICLES = 260;
@@ -51,6 +55,8 @@ export class Stage {
   private readonly particleColors: Float32Array;
 
   private humanoid: Humanoid | null = null;
+  private avatar: AvatarRig | null = null;
+  private environment: THREE.Texture | null = null;
   private appearanceKey = '';
   private backgroundKey = '';
   private backgroundTexture: THREE.CanvasTexture | null = null;
@@ -104,6 +110,19 @@ export class Stage {
     this.rimLight = new THREE.DirectionalLight(0xbcd4ff, 1.5);
     this.rimLight.position.set(-3.2, 3.4, -4.2);
     this.scene.add(this.rimLight);
+
+    // --- 環境光（IBL） -------------------------------------------------------
+    // 点光源だけだと肌や布が硬く見えるため、簡易的な室内環境を焼き込んで
+    // 反射・陰影に階調を与える（実写寄りの見えに効く）。
+    try {
+      const pmrem = new THREE.PMREMGenerator(this.renderer);
+      this.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      this.scene.environment = this.environment;
+      this.scene.environmentIntensity = 0.55;
+      pmrem.dispose();
+    } catch {
+      // 環境マップが作れない環境でも、3灯だけで描画は成立する
+    }
 
     // --- 地面（影のみを落とす） -------------------------------------------
     this.ground = new THREE.Mesh(
@@ -168,30 +187,46 @@ export class Stage {
     if (this.contextLost) return;
     const { project, frame, beat, bass, analysis, time } = update;
 
-    this.syncAppearance(project.appearance);
     this.syncBackground(project);
+    this.syncAvatar(update.avatar);
 
     const rig = buildRig(project.appearance);
-    const humanoid = this.humanoid;
+    let totalHeight = rig.totalHeight;
 
-    if (humanoid) {
-      humanoid.root.visible = frame !== null;
+    if (this.avatar) {
+      // 外部アバターを使う場合、内蔵キャラクターは描かない
+      if (this.humanoid) this.humanoid.root.visible = false;
+      totalHeight = this.avatar.totalHeight;
+      this.avatar.root.visible = frame !== null;
       if (frame) {
-        const skeleton = retarget(frame, rig);
-        humanoid.update(skeleton);
-        // 足裏が地面に接するように全体を持ち上げる
-        const lift = -lowestPoint(skeleton) + rig.foot * 0.12;
-        const travel = project.timing.rootMotion;
-        humanoid.root.position.set(
-          frame.root.x * travel * 0.5,
-          lift + Math.max(0, frame.root.y * travel * 0.25),
-          0,
-        );
+        applyPoseToAvatar(this.avatar, frame, {
+          rootMotion: project.timing.rootMotion,
+          flipFacing: project.avatarFlipFacing ?? this.avatar.facesBackward,
+        });
+        this.groundAvatar(this.avatar);
+      }
+    } else {
+      this.syncAppearance(project.appearance);
+      const humanoid = this.humanoid;
+      if (humanoid) {
+        humanoid.root.visible = frame !== null;
+        if (frame) {
+          const skeleton = retarget(frame, rig);
+          humanoid.update(skeleton);
+          // 足裏が地面に接するように全体を持ち上げる
+          const lift = -lowestPoint(skeleton) + rig.foot * 0.12;
+          const travel = project.timing.rootMotion;
+          humanoid.root.position.set(
+            frame.root.x * travel * 0.5,
+            lift + Math.max(0, frame.root.y * travel * 0.25),
+            0,
+          );
+        }
       }
     }
 
-    this.updateCamera(project, rig.totalHeight, beat, frame);
-    this.updateEffects(project, analysis, time, beat, bass, rig.totalHeight);
+    this.updateCamera(project, totalHeight, beat, frame);
+    this.updateEffects(project, analysis, time, beat, bass, totalHeight);
 
     this.renderer.render(this.scene, this.camera);
   }
@@ -201,6 +236,7 @@ export class Stage {
     this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
     this.humanoid?.dispose();
     this.backgroundTexture?.dispose();
+    this.environment?.dispose();
     this.ground.geometry.dispose();
     (this.ground.material as THREE.Material).dispose();
     this.floorGlow.geometry.dispose();
@@ -222,6 +258,34 @@ export class Stage {
     // マテリアル・テクスチャは three.js が再アップロードするため、再構築は不要。
     this.backgroundKey = '';
   };
+
+  /** 使用するアバターを差し替える。null なら内蔵キャラクターに戻す。 */
+  private syncAvatar(avatar: AvatarRig | null): void {
+    if (this.avatar === avatar) return;
+    if (this.avatar) this.scene.remove(this.avatar.root);
+    this.avatar = avatar;
+    if (avatar) {
+      this.scene.add(avatar.root);
+      if (this.humanoid) this.humanoid.root.visible = false;
+    }
+  }
+
+  /** ポーズ適用後に、最も低い足が地面に接するよう全体を上下させる。 */
+  private groundAvatar(avatar: AvatarRig): void {
+    avatar.root.position.y = 0;
+    avatar.root.updateMatrixWorld(true);
+    let lowest = Infinity;
+    for (const bone of [avatar.bones.leftFoot, avatar.bones.rightFoot, avatar.bones.leftLowerLeg, avatar.bones.rightLowerLeg]) {
+      if (!bone) continue;
+      const y = new THREE.Vector3().setFromMatrixPosition(bone.matrixWorld).y;
+      if (y < lowest) lowest = y;
+    }
+    if (Number.isFinite(lowest)) {
+      // 足首ボーンは足裏より少し上にあるため、その分だけ余分に下げない
+      avatar.root.position.y = -lowest + avatar.totalHeight * 0.02;
+      avatar.root.updateMatrixWorld(true);
+    }
+  }
 
   private syncAppearance(appearance: CharacterAppearance): void {
     const key = JSON.stringify(appearance);
