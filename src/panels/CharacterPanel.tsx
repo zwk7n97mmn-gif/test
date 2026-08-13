@@ -2,11 +2,18 @@ import {
   APPEARANCE_LIMITS,
   BUILDS,
   BUILD_LABELS,
+  EYE_SPARKLES,
+  EYE_SPARKLE_LABELS,
+  FACE_STYLES,
+  FACE_STYLE_LABELS,
+  HAIR_ACCESSORIES,
+  HAIR_ACCESSORY_LABELS,
   HAIR_STYLES,
   HAIR_STYLE_LABELS,
   OUTFITS,
   OUTFIT_LABELS,
   createDefaultAppearance,
+  createIdolAppearance,
   type CharacterAppearance,
 } from '../lib/character/appearance';
 import { useRef, useState } from 'react';
@@ -64,6 +71,19 @@ export function CharacterPanel() {
           変更できるのは見た目だけです。モーションは別データなので、何をどう変えても動きは変わりません。
         </p>
 
+        <div className="btn-row" style={{ marginBottom: 12 }}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              set({ ...createIdolAppearance(), id: appearance.id, name: appearance.name });
+              toast.push('success', 'アニメ調のアイドル衣装を適用しました。色や髪型は個別に変えられます。');
+            }}
+          >
+            ✨ アニメ調アイドルにする
+          </button>
+        </div>
+
         <Field label="キャラクター名">
           {({ id }) => (
             <input
@@ -98,6 +118,28 @@ export function CharacterPanel() {
           onChange={(outfit) => set({ outfit })}
         />
 
+        <div className="grid-2">
+          <SelectField
+            label="顔の造形"
+            value={appearance.faceStyle}
+            options={toOptions(FACE_STYLES, FACE_STYLE_LABELS)}
+            onChange={(faceStyle) => set({ faceStyle })}
+          />
+          <SelectField
+            label="瞳のハイライト"
+            value={appearance.eyeSparkle}
+            options={toOptions(EYE_SPARKLES, EYE_SPARKLE_LABELS)}
+            onChange={(eyeSparkle) => set({ eyeSparkle })}
+          />
+        </div>
+
+        <SelectField
+          label="髪飾り"
+          value={appearance.hairAccessory}
+          options={toOptions(HAIR_ACCESSORIES, HAIR_ACCESSORY_LABELS)}
+          onChange={(hairAccessory) => set({ hairAccessory })}
+        />
+
         <Field label="肌の色" value={appearance.skinTone.toUpperCase()}>
           {({ id }) => (
             <div id={id} className="btn-row" role="group" aria-label="肌の色のプリセット">
@@ -129,7 +171,23 @@ export function CharacterPanel() {
           <ColorField label="トップス" value={appearance.topColor} onChange={(topColor) => set({ topColor })} />
           <ColorField label="ボトムス" value={appearance.bottomColor} onChange={(bottomColor) => set({ bottomColor })} />
           <ColorField label="靴" value={appearance.shoeColor} onChange={(shoeColor) => set({ shoeColor })} />
+          <ColorField
+            label="差し色（手袋・髪飾り・毛先）"
+            value={appearance.accentColor}
+            onChange={(accentColor) => set({ accentColor })}
+          />
+          <ColorField label="インナー" value={appearance.innerColor} onChange={(innerColor) => set({ innerColor })} />
         </div>
+
+        <Slider
+          label="毛先のグラデーション"
+          min={L.hairGradient.min}
+          max={L.hairGradient.max}
+          step={L.hairGradient.step}
+          value={appearance.hairGradient}
+          onChange={(hairGradient) => set({ hairGradient })}
+          format={(v) => (v === 0 ? '単色' : `差し色 ${(v * 100).toFixed(0)}%`)}
+        />
       </section>
 
       <section className="panel">

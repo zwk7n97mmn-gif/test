@@ -9,8 +9,18 @@ import {
   type MotionClip,
   type MotionFrame,
 } from '../src/lib/pose/types';
-import { buildRig, createDefaultAppearance } from '../src/lib/character/appearance';
-import { buildBuiltinAvatar } from '../src/lib/character/builtinAvatar';
+import {
+  EYE_SPARKLES,
+  FACE_STYLES,
+  HAIR_ACCESSORIES,
+  HAIR_STYLES,
+  OUTFITS,
+  buildRig,
+  createDefaultAppearance,
+  createIdolAppearance,
+  type CharacterAppearance,
+} from '../src/lib/character/appearance';
+import { buildBuiltinAvatar, builtinStructureKey } from '../src/lib/character/builtinAvatar';
 import { applyPoseToAvatar } from '../src/lib/character/avatarRetarget';
 import { OneEuroFilter } from '../src/lib/pose/oneEuro';
 
@@ -322,10 +332,81 @@ describe('内蔵キャラクター（容姿とモーションの分離）', () =
   });
 
   it('全ての服装・髪型で例外なく生成できる', () => {
-    for (const outfit of ['tshirt', 'hoodie', 'tanktop', 'dress', 'jacket'] as const) {
-      for (const hairStyle of ['short', 'bob', 'long', 'ponytail', 'bun'] as const) {
+    for (const outfit of OUTFITS) {
+      for (const hairStyle of HAIR_STYLES) {
         expect(() => buildBuiltinAvatar(createDefaultAppearance({ outfit, hairStyle }))).not.toThrow();
       }
+    }
+  });
+
+  it('全ての顔・瞳・髪飾りの組み合わせで例外なく生成できる', () => {
+    for (const faceStyle of FACE_STYLES) {
+      for (const eyeSparkle of EYE_SPARKLES) {
+        for (const hairAccessory of HAIR_ACCESSORIES) {
+          expect(() =>
+            buildBuiltinAvatar(createDefaultAppearance({ faceStyle, eyeSparkle, hairAccessory })),
+          ).not.toThrow();
+        }
+      }
+    }
+  });
+
+  it('アイドルプリセットもボーン構成は共通（＝同じモーションで動かせる）', () => {
+    const idol = buildBuiltinAvatar(createIdolAppearance());
+    const plain = buildBuiltinAvatar(createDefaultAppearance());
+    expect(Object.keys(idol.bones).sort()).toEqual(Object.keys(plain.bones).sort());
+    expect(idol.warnings).toEqual([]);
+    expect(Number.isFinite(idol.hipsHeight)).toBe(true);
+    expect(idol.hipsHeight).toBeGreaterThan(0);
+  });
+
+  it('アニメ調・アイドル衣装に変えても関節の向きは変わらない', () => {
+    // 「容姿だけを変えて動きは元のまま」という中心要件を、
+    // 今回追加した見た目パラメータについても保証する。
+    const source = frame();
+    const plain = buildBuiltinAvatar(createDefaultAppearance());
+    const idol = buildBuiltinAvatar(
+      createIdolAppearance({ headScale: 1, legLength: 1, shoulderWidth: 1, limbThickness: 1, build: 'average' }),
+    );
+    for (const rig of [plain, idol]) {
+      applyPoseToAvatar(rig, source, { flipFacing: false });
+      rig.root.updateMatrixWorld(true);
+    }
+
+    for (const [from, to] of [
+      ['leftUpperArm', 'leftLowerArm'],
+      ['leftLowerArm', 'leftHand'],
+      ['rightUpperLeg', 'rightLowerLeg'],
+      ['spine', 'chest'],
+      ['neck', 'head'],
+    ] as const) {
+      const a = direction(worldPos(plain.bones[from]!), worldPos(plain.bones[to]!));
+      const b = direction(worldPos(idol.bones[from]!), worldPos(idol.bones[to]!));
+      expect(a.x).toBeCloseTo(b.x, 5);
+      expect(a.y).toBeCloseTo(b.y, 5);
+      expect(a.z).toBeCloseTo(b.z, 5);
+    }
+  });
+
+  it('構造キーは形状に関わる項目の変化を拾う', () => {
+    const base = createDefaultAppearance();
+    // 形が変わるもの
+    for (const patch of [
+      { faceStyle: 'anime' },
+      { eyeSparkle: 'star' },
+      { hairAccessory: 'ribbon' },
+      { outfit: 'idol' },
+      { hairStyle: 'twintail' },
+    ] as Array<Partial<CharacterAppearance>>) {
+      expect(builtinStructureKey({ ...base, ...patch })).not.toBe(builtinStructureKey(base));
+    }
+    // 色だけの変更ではメッシュを作り直さない
+    for (const patch of [
+      { accentColor: '#123456' },
+      { innerColor: '#654321' },
+      { hairGradient: 0.9 },
+    ] as Array<Partial<CharacterAppearance>>) {
+      expect(builtinStructureKey({ ...base, ...patch })).toBe(builtinStructureKey(base));
     }
   });
 });

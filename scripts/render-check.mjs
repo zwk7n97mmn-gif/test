@@ -8,7 +8,7 @@
  */
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, readdir } from 'node:fs/promises';
+import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
@@ -81,10 +81,26 @@ async function main() {
     await page.waitForFunction(() => document.body.dataset.renderComplete === 'true', { timeout: 30_000 });
     await page.screenshot({ path: join(outDir, 'render-check.png'), fullPage: true });
 
-    // 顔まわりは全体図では潰れて見えないので、等倍のカットも別途保存する
-    const closeup = page.locator('figure', { hasText: '顔の寄り' }).first();
-    if ((await closeup.count()) > 0) {
-      await closeup.screenshot({ path: join(outDir, 'face.png'), scale: 'css' });
+    // 顔・髪まわりは全体図では潰れて見えないので、等倍のカットも別途保存する
+    const closeups = [
+      ['顔の寄り', 'face.png'],
+      ['アニメ調の顔', 'face-anime.png'],
+      ['ツインテール', 'hair-twintail.png'],
+      ['サイドテール', 'hair-sidetail.png'],
+      ['姫カット', 'hair-hime.png'],
+      ['アイドル', 'idol.png'],
+    ];
+    // 画面上は縮小表示されるため、キャンバスの中身を等倍のまま取り出す
+    for (const [label, file] of closeups) {
+      const dataUrl = await page.evaluate((needle) => {
+        const figure = Array.from(document.querySelectorAll('figure')).find((node) =>
+          node.querySelector('figcaption')?.textContent?.includes(needle),
+        );
+        return figure?.querySelector('canvas')?.toDataURL('image/png') ?? null;
+      }, label);
+      if (dataUrl) {
+        await writeFile(join(outDir, file), Buffer.from(dataUrl.split(',')[1], 'base64'));
+      }
     }
 
     // 実際に描画されたかを検査する（真っ黒/空のキャンバスを見逃さない）
@@ -137,6 +153,19 @@ async function main() {
     const stageErrors = await appPage.locator('.stage-note.is-error').allInnerTexts();
     for (const text of stageErrors) errors.push(`[app] プレビューにエラー表示: ${text}`);
     await appPage.screenshot({ path: join(outDir, 'app.png'), fullPage: false });
+
+    // 容姿タブ: アイドルプリセットのワンタップ適用が実機で動くかを確認する
+    await appPage.getByRole('tab', { name: '容姿' }).click();
+    await appPage.getByRole('button', { name: 'アニメ調アイドルにする' }).click();
+    await appPage.waitForTimeout(1500);
+    const appliedOutfit = await appPage.getByLabel('服装').inputValue();
+    const appliedFace = await appPage.getByLabel('顔の造形').inputValue();
+    if (appliedOutfit !== 'idol' || appliedFace !== 'anime') {
+      errors.push(`[app] アイドルプリセットが適用されていない (outfit=${appliedOutfit}, face=${appliedFace})`);
+    }
+    const afterPresetErrors = await appPage.locator('.stage-note.is-error').allInnerTexts();
+    for (const text of afterPresetErrors) errors.push(`[app] 容姿変更後にエラー表示: ${text}`);
+    await appPage.screenshot({ path: join(outDir, 'app-character.png'), fullPage: false });
 
     if (errors.length > 0) {
       console.error('\nコンソールエラー:');

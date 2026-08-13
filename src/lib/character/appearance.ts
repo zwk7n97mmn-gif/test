@@ -1,10 +1,27 @@
-export const HAIR_STYLES = ['short', 'bob', 'long', 'ponytail', 'bun'] as const;
-export const OUTFITS = ['tshirt', 'hoodie', 'tanktop', 'dress', 'jacket'] as const;
+export const HAIR_STYLES = [
+  'short',
+  'bob',
+  'long',
+  'ponytail',
+  'bun',
+  'twintail',
+  'sidetail',
+  'hime',
+] as const;
+export const OUTFITS = ['tshirt', 'hoodie', 'tanktop', 'dress', 'jacket', 'idol'] as const;
 export const BUILDS = ['slim', 'average', 'athletic', 'curvy'] as const;
+/** 顔の造形。アニメ調は目を大きく、鼻と口を小さくする。 */
+export const FACE_STYLES = ['natural', 'anime'] as const;
+/** 瞳のハイライト。星形はアイドル系イラストでよく使われる。 */
+export const EYE_SPARKLES = ['none', 'round', 'star'] as const;
+export const HAIR_ACCESSORIES = ['none', 'star', 'ribbon', 'flower'] as const;
 
 export type HairStyle = (typeof HAIR_STYLES)[number];
 export type Outfit = (typeof OUTFITS)[number];
 export type Build = (typeof BUILDS)[number];
+export type FaceStyle = (typeof FACE_STYLES)[number];
+export type EyeSparkle = (typeof EYE_SPARKLES)[number];
+export type HairAccessory = (typeof HAIR_ACCESSORIES)[number];
 
 export const HAIR_STYLE_LABELS: Record<HairStyle, string> = {
   short: 'ショート',
@@ -12,6 +29,9 @@ export const HAIR_STYLE_LABELS: Record<HairStyle, string> = {
   long: 'ロング',
   ponytail: 'ポニーテール',
   bun: 'お団子',
+  twintail: 'ツインテール',
+  sidetail: 'サイドテール',
+  hime: '姫カット（ロング）',
 };
 export const OUTFIT_LABELS: Record<Outfit, string> = {
   tshirt: 'Tシャツ + パンツ',
@@ -19,12 +39,28 @@ export const OUTFIT_LABELS: Record<Outfit, string> = {
   tanktop: 'タンクトップ + ショーツ',
   dress: 'ワンピース',
   jacket: 'ジャケット + スカート',
+  idol: 'アイドル衣装（プリーツ + 手袋 + ブーツ）',
 };
 export const BUILD_LABELS: Record<Build, string> = {
   slim: 'スリム',
   average: 'ふつう',
   athletic: 'アスリート',
   curvy: 'グラマー',
+};
+export const FACE_STYLE_LABELS: Record<FaceStyle, string> = {
+  natural: 'ナチュラル',
+  anime: 'アニメ調（目を大きく）',
+};
+export const EYE_SPARKLE_LABELS: Record<EyeSparkle, string> = {
+  none: 'なし',
+  round: '丸ハイライト',
+  star: '星ハイライト',
+};
+export const HAIR_ACCESSORY_LABELS: Record<HairAccessory, string> = {
+  none: 'なし',
+  star: '星',
+  ribbon: 'リボン',
+  flower: '花',
 };
 
 /**
@@ -54,6 +90,15 @@ export interface CharacterAppearance {
   shoeColor: string;
   /** 肌の質感（0=マット, 1=ツヤあり） */
   skinGloss: number;
+  faceStyle: FaceStyle;
+  eyeSparkle: EyeSparkle;
+  hairAccessory: HairAccessory;
+  /** 手袋・リボン・髪飾りなどの差し色。毛先のグラデーションにも使う。 */
+  accentColor: string;
+  /** インナー（アイドル衣装の下に着るトップスなど）の色。 */
+  innerColor: string;
+  /** 毛先を accentColor へどれだけ寄せるか。0 で単色。 */
+  hairGradient: number;
 }
 
 export const APPEARANCE_LIMITS = {
@@ -62,6 +107,7 @@ export const APPEARANCE_LIMITS = {
   shoulderWidth: { min: 0.8, max: 1.25, step: 0.01 },
   limbThickness: { min: 0.8, max: 1.3, step: 0.01 },
   skinGloss: { min: 0, max: 1, step: 0.01 },
+  hairGradient: { min: 0, max: 1, step: 0.01 },
 } as const;
 
 export function createDefaultAppearance(overrides: Partial<CharacterAppearance> = {}): CharacterAppearance {
@@ -82,6 +128,12 @@ export function createDefaultAppearance(overrides: Partial<CharacterAppearance> 
     bottomColor: '#3a4356',
     shoeColor: '#26262c',
     skinGloss: 0.25,
+    faceStyle: 'natural',
+    eyeSparkle: 'round',
+    hairAccessory: 'none',
+    accentColor: '#e0457b',
+    innerColor: '#f2d24b',
+    hairGradient: 0,
     ...overrides,
   };
 }
@@ -123,7 +175,42 @@ export function createSampleAppearances(): CharacterAppearance[] {
       build: 'curvy',
       legLength: 1.08,
     }),
+    createIdolAppearance(),
   ];
+}
+
+/**
+ * アニメ調のアイドル衣装プリセット。
+ *
+ * 特定の作品のキャラクターを複製するものではなく、
+ * 「大きな瞳・星のハイライト・ツインテール・プリーツ衣装」という
+ * ジャンルとして一般的な要素の組み合わせ。色も髪型も後から自由に変えられる。
+ */
+export function createIdolAppearance(overrides: Partial<CharacterAppearance> = {}): CharacterAppearance {
+  return createDefaultAppearance({
+    name: 'アイドル',
+    build: 'slim',
+    headScale: 1.14,
+    legLength: 1.1,
+    shoulderWidth: 0.9,
+    limbThickness: 0.9,
+    skinTone: '#f7ddca',
+    skinGloss: 0.45,
+    faceStyle: 'anime',
+    eyeSparkle: 'star',
+    eyeColor: '#7b4fd0',
+    hairStyle: 'twintail',
+    hairColor: '#33245c',
+    hairGradient: 0.32,
+    hairAccessory: 'star',
+    outfit: 'idol',
+    topColor: '#e0457b',
+    innerColor: '#f2d24b',
+    bottomColor: '#f4f1f8',
+    accentColor: '#e8437f',
+    shoeColor: '#d63a72',
+    ...overrides,
+  });
 }
 
 /** 入力値を安全な範囲に丸める（フォームからの異常値・破損データ対策）。 */
@@ -158,6 +245,12 @@ export function sanitizeAppearance(input: Partial<CharacterAppearance>): Charact
     bottomColor: pickColor(input.bottomColor, base.bottomColor),
     shoeColor: pickColor(input.shoeColor, base.shoeColor),
     skinGloss: pickNumber(input.skinGloss, L.skinGloss.min, L.skinGloss.max, base.skinGloss),
+    faceStyle: pickEnum(input.faceStyle, FACE_STYLES, base.faceStyle),
+    eyeSparkle: pickEnum(input.eyeSparkle, EYE_SPARKLES, base.eyeSparkle),
+    hairAccessory: pickEnum(input.hairAccessory, HAIR_ACCESSORIES, base.hairAccessory),
+    accentColor: pickColor(input.accentColor, base.accentColor),
+    innerColor: pickColor(input.innerColor, base.innerColor),
+    hairGradient: pickNumber(input.hairGradient, L.hairGradient.min, L.hairGradient.max, base.hairGradient),
   };
 }
 

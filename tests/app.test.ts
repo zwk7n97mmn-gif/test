@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { contrastRatio, hexToRgb, mix, readableTextColor, shade } from '../src/lib/util/color';
 import { sanitizeProject, canvasSize, createProject } from '../src/lib/project/types';
-import { sanitizeAppearance, createDefaultAppearance } from '../src/lib/character/appearance';
+import {
+  sanitizeAppearance,
+  createDefaultAppearance,
+  createIdolAppearance,
+} from '../src/lib/character/appearance';
 import { beatEnergyAt, beatOrigin, motionTimeAt } from '../src/lib/render/composer';
 import { formatMetric, parseCsv, parseMetric, parseTrendList, TrendImportError } from '../src/lib/trend/import';
 import type { AudioAnalysis } from '../src/lib/audio/types';
@@ -148,11 +152,39 @@ describe('容姿パラメータの正規化', () => {
       hairStyle: 'mohawk' as never,
       outfit: 'armor' as never,
       build: 'giant' as never,
+      faceStyle: 'photoreal' as never,
+      eyeSparkle: 'rainbow' as never,
+      hairAccessory: 'crown' as never,
+      accentColor: 'hotpink' as never,
+      innerColor: '#12345' as never,
     });
     expect(appearance.hairColor).toBe(base.hairColor);
     expect(appearance.hairStyle).toBe(base.hairStyle);
     expect(appearance.outfit).toBe(base.outfit);
     expect(appearance.build).toBe(base.build);
+    expect(appearance.faceStyle).toBe(base.faceStyle);
+    expect(appearance.eyeSparkle).toBe(base.eyeSparkle);
+    expect(appearance.hairAccessory).toBe(base.hairAccessory);
+    expect(appearance.accentColor).toBe(base.accentColor);
+    expect(appearance.innerColor).toBe(base.innerColor);
+  });
+
+  it('毛先のグラデーションは 0〜1 に収まる', () => {
+    expect(sanitizeAppearance({ hairGradient: 9 }).hairGradient).toBe(1);
+    expect(sanitizeAppearance({ hairGradient: -3 }).hairGradient).toBe(0);
+    expect(sanitizeAppearance({ hairGradient: Number.NaN }).hairGradient).toBe(0);
+  });
+
+  it('アイドルプリセットは保存・復元しても壊れない', () => {
+    const idol = createIdolAppearance();
+    // IndexedDB / JSON を経由しても値が保たれること
+    const restored = sanitizeAppearance(JSON.parse(JSON.stringify(idol)));
+    expect(restored.faceStyle).toBe('anime');
+    expect(restored.eyeSparkle).toBe('star');
+    expect(restored.outfit).toBe('idol');
+    expect(restored.hairStyle).toBe('twintail');
+    expect(restored.hairAccessory).toBe('star');
+    expect(restored.accentColor).toBe(idol.accentColor);
   });
 
   it('空白のみの名前は既定値になる', () => {

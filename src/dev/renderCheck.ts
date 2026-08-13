@@ -5,7 +5,11 @@
  */
 import * as THREE from 'three';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
-import { createSampleAppearances, createDefaultAppearance } from '../lib/character/appearance';
+import {
+  createSampleAppearances,
+  createDefaultAppearance,
+  createIdolAppearance,
+} from '../lib/character/appearance';
 import { loadAvatar } from '../lib/character/avatar';
 import type { AvatarRig } from '../lib/character/avatarRetarget';
 import { JOINT_COUNT, JOINT_INDEX, type JointName, type MotionClip, type MotionFrame } from '../lib/pose/types';
@@ -275,6 +279,39 @@ async function main(): Promise<void> {
     const canvas = makeCanvas(560, 560, '顔の寄り（目・眉・口の確認）');
     const ctx = canvas.getContext('2d', { alpha: false })!;
     renderFrame(ctx, 0.28, { project, clip, analysis });
+  }
+
+  // 3.6) アニメ調の顔（大きな瞳・星のハイライトが描けているか）
+  {
+    const idol = createIdolAppearance();
+    const project = createProject({ appearance: idol });
+    project.timing = { ...project.timing, scale: 6, anchorY: 4.62, rootMotion: 0 };
+    project.effects = { ...project.effects, particles: 0, bassPulse: 0 };
+    const canvas = makeCanvas(560, 560, 'アニメ調の顔（瞳・星ハイライト）');
+    const ctx = canvas.getContext('2d', { alpha: false })!;
+    renderFrame(ctx, 0.28, { project, clip, analysis });
+  }
+
+  // 3.7) 新しい髪型と髪飾りの組み合わせ
+  {
+    const variants = [
+      { hairStyle: 'twintail', hairAccessory: 'star', label: 'ツインテール + 星' },
+      { hairStyle: 'sidetail', hairAccessory: 'ribbon', label: 'サイドテール + リボン' },
+      { hairStyle: 'hime', hairAccessory: 'flower', label: '姫カット + 花' },
+    ] as const;
+    for (const variant of variants) {
+      const appearance = createIdolAppearance({
+        hairStyle: variant.hairStyle,
+        hairAccessory: variant.hairAccessory,
+      });
+      const project = createProject({ appearance });
+      // 上半身が入る画角（髪の毛束が体に食い込んでいないかを見る）
+      project.timing = { ...project.timing, scale: 2.7, anchorY: 2.1, rootMotion: 0 };
+      project.effects = { ...project.effects, particles: 0, bassPulse: 0 };
+      const canvas = makeCanvas(420, 560, variant.label);
+      const ctx = canvas.getContext('2d', { alpha: false })!;
+      renderFrame(ctx, 0.28, { project, clip, analysis });
+    }
   }
 
   // 4) 左右反転
