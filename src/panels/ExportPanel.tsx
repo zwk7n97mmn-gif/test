@@ -12,13 +12,30 @@ import { effectiveRange } from '../lib/render/composer';
 import { useCurrentAssets, useWorkspace } from '../state/workspace';
 import { Alert, Checkbox, EmptyState, ProgressBar, formatBytes, formatTime, useToast } from '../ui/primitives';
 
+/** Web Share API level 2（ファイル共有）が使えるか。 */
+function canShare(file: File): boolean {
+  return typeof navigator !== 'undefined' && typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] });
+}
+
+/** 共有シートを開く。成功したら true、非対応・キャンセル時は false。 */
+async function shareFile(file: File): Promise<boolean> {
+  if (!canShare(file)) return false;
+  try {
+    await navigator.share({ files: [file], title: file.name });
+    return true;
+  } catch {
+    // ユーザーがキャンセルした場合もここに来る。保存へのフォールバックは呼び出し側で判断する。
+    return false;
+  }
+}
+
 export function ExportPanel() {
-  const { project, getAudioBuffer, setAudioBuffer, storage } = useWorkspace();
+  const { project, getAudioBuffer, setAudioBuffer, storage, setRenderBusy } = useWorkspace();
   const { clip, audio, analysis } = useCurrentAssets();
   const toast = useToast();
 
   const [progress, setProgress] = useState<{ ratio: number; message: string } | null>(null);
-  const [result, setResult] = useState<{ blob: Blob; fileName: string } | null>(null);
+  const [result, setResult] = useState<{ blob: Blob; fileName: string; file: File } | null>(null);
   const [monitor, setMonitor] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -36,6 +53,8 @@ export function ExportPanel() {
     const controller = new AbortController();
     abortRef.current = controller;
     setProgress({ ratio: 0, message: '準備中…' });
+    // WebGL コンテキストは 1 つを共有しているため、書き出し中はプレビューを止める
+    setRenderBusy(true);
     try {
       let buffer = audio ? getAudioBuffer(audio.id) : null;
       if (audio && !buffer) {
@@ -52,9 +71,11 @@ export function ExportPanel() {
         onProgress: (update) => setProgress({ ratio: update.ratio, message: update.message }),
       });
       const fileName = safeFileName(project.name, output.extension);
-      setResult({ blob: output.blob, fileName });
-      downloadBlob(output.blob, fileName);
+      const file = new File([output.blob], fileName, { type: output.mimeType });
+      setResult({ blob: output.blob, fileName, file });
       toast.push('success', `書き出しが完了しました（${formatBytes(output.blob.size)}）`);
+      // スマートフォンでは共有シートから直接 SNS へ渡せるようにする
+      if (!(await shareFile(file))) downloadBlob(output.blob, fileName);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         toast.push('info', '書き出しを中止しました。');
@@ -64,6 +85,7 @@ export function ExportPanel() {
     } finally {
       setProgress(null);
       abortRef.current = null;
+      setRenderBusy(false);
     }
   };
 
@@ -149,13 +171,24 @@ export function ExportPanel() {
             <Alert kind="info" title="書き出しが完了しました">
               {result.fileName}（{formatBytes(result.blob.size)}）
             </Alert>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => downloadBlob(result.blob, result.fileName)}
-            >
-              もう一度ダウンロード
-            </button>
+            <div className="btn-row">
+              {canShare(result.file) && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    void shareFile(result.file).then((ok) => {
+                      if (!ok) toast.push('info', '共有できなかったため、保存に切り替えてください。');
+                    });
+                  }}
+                >
+                  📤 共有する
+                </button>
+              )}
+              <button type="button" className="btn" onClick={() => downloadBlob(result.blob, result.fileName)}>
+                端末に保存
+              </button>
+            </div>
           </div>
         )}
 

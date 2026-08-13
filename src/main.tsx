@@ -21,3 +21,14 @@ createRoot(container).render(
     </ErrorBoundary>
   </StrictMode>,
 );
+
+// オフラインで使えるようにするための Service Worker。
+// 開発中は登録しない（HMR と競合するため）。
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch((err) => {
+      // 登録に失敗してもアプリ自体は動くので、警告に留める
+      console.warn('Service Worker を登録できませんでした', err);
+    });
+  });
+}

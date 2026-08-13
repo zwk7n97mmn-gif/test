@@ -33,24 +33,30 @@ export const JOINT_INDEX: Record<JointName, number> = JOINT_NAMES.reduce(
 
 export const JOINT_COUNT = JOINT_NAMES.length;
 
+export interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
 /**
- * 1フレーム分の姿勢。
- * 座標系: 原点=腰(hip)、+X=右(画面右)、+Y=下、単位=胴長(hip→chest)を1とする正規化空間。
- * これによりキャラクターの体格が変わってもモーションは不変になる。
+ * 1フレーム分の 3D 姿勢。
+ *
+ * 座標系: 原点=腰(hip)、+X=画面右、+Y=上、+Z=カメラ側（手前）、
+ * 単位=胴長(hip→chest)を1とする正規化空間。右手系。
+ * ここで体格の絶対サイズを落とすことで、どんな体型のキャラクターにも同じ動きを適用できる。
  */
 export interface MotionFrame {
   /** クリップ先頭からの秒数 */
   t: number;
-  /** JOINT_COUNT * 2 の [x, y] 配列 */
+  /** JOINT_COUNT * 3 の [x, y, z] 配列 */
   positions: Float32Array;
   /** 関節ごとの信頼度 0..1 */
   confidence: Float32Array;
-  /** 画面内でのルート位置（胴長単位、フレーム中心が原点） */
-  root: { x: number; y: number };
-  /** 正面向き度合い。1=正面、0=真横。肩幅/胴長から推定。 */
+  /** 画面内でのルート位置（胴長単位、画面中心が原点。zは奥行きの目安） */
+  root: Vec3;
+  /** 体がカメラに対してどれだけ正面か。1=正面、0=真横。 */
   facing: number;
-  /** 左右反転しているか（右肩が画面左に来ている） */
-  mirrored: boolean;
 }
 
 export interface MotionClip {
@@ -60,7 +66,7 @@ export interface MotionClip {
   duration: number;
   frames: MotionFrame[];
   source: {
-    kind: 'video' | 'import';
+    kind: 'video' | 'camera' | 'import';
     fileName: string;
     /** 抽出に使ったバックエンド識別子 */
     backend: string;
@@ -79,7 +85,8 @@ export interface MotionClip {
 
 /** JSON へ直列化するときの形（Float32Array は通常配列にする） */
 export interface SerializedMotionClip {
-  formatVersion: 1;
+  /** 2 = 3D 対応版。1（2D）は読み込み時に拒否する。 */
+  formatVersion: 2;
   id: string;
   name: string;
   fps: number;
@@ -91,15 +98,14 @@ export interface SerializedMotionClip {
     t: number;
     p: number[];
     c: number[];
-    root: [number, number];
+    root: [number, number, number];
     facing: number;
-    mirrored: boolean;
   }>;
 }
 
 export function serializeClip(clip: MotionClip): SerializedMotionClip {
   return {
-    formatVersion: 1,
+    formatVersion: 2,
     id: clip.id,
     name: clip.name,
     fps: clip.fps,
@@ -111,9 +117,8 @@ export function serializeClip(clip: MotionClip): SerializedMotionClip {
       t: round4(f.t),
       p: Array.from(f.positions, round4),
       c: Array.from(f.confidence, round3),
-      root: [round4(f.root.x), round4(f.root.y)],
+      root: [round4(f.root.x), round4(f.root.y), round4(f.root.z)],
       facing: round3(f.facing),
-      mirrored: f.mirrored,
     })),
   };
 }
@@ -123,8 +128,14 @@ export function deserializeClip(data: unknown): MotionClip {
     throw new Error('モーションファイルの形式が不正です（オブジェクトではありません）。');
   }
   const raw = data as Partial<SerializedMotionClip>;
-  if (raw.formatVersion !== 1) {
-    throw new Error(`未対応のフォーマットバージョンです: ${String(raw.formatVersion)}`);
+  const version = (data as { formatVersion?: unknown }).formatVersion;
+  if (version === 1) {
+    throw new Error(
+      '2D 形式（v1）のモーションファイルです。3D 版では読み込めません。動画から取り込み直してください。',
+    );
+  }
+  if (version !== 2) {
+    throw new Error(`未対応のフォーマットバージョンです: ${String(version)}`);
   }
   if (!Array.isArray(raw.frames) || raw.frames.length === 0) {
     throw new Error('モーションファイルにフレームが含まれていません。');
@@ -133,8 +144,8 @@ export function deserializeClip(data: unknown): MotionClip {
     throw new Error(`関節数が一致しません（期待 ${JOINT_COUNT} / 実際 ${raw.joints?.length ?? 0}）。`);
   }
   const frames: MotionFrame[] = raw.frames.map((f, i) => {
-    if (!Array.isArray(f.p) || f.p.length !== JOINT_COUNT * 2) {
-      throw new Error(`フレーム ${i} の座標数が不正です。`);
+    if (!Array.isArray(f.p) || f.p.length !== JOINT_COUNT * 3) {
+      throw new Error(`フレーム ${i} の座標数が不正です（期待 ${JOINT_COUNT * 3}）。`);
     }
     return {
       t: Number(f.t) || 0,
@@ -142,9 +153,8 @@ export function deserializeClip(data: unknown): MotionClip {
       confidence: Float32Array.from(
         Array.isArray(f.c) && f.c.length === JOINT_COUNT ? f.c : new Array(JOINT_COUNT).fill(1),
       ),
-      root: { x: f.root?.[0] ?? 0, y: f.root?.[1] ?? 0 },
+      root: { x: f.root?.[0] ?? 0, y: f.root?.[1] ?? 0, z: f.root?.[2] ?? 0 },
       facing: typeof f.facing === 'number' ? f.facing : 1,
-      mirrored: Boolean(f.mirrored),
     };
   });
   return {
@@ -185,9 +195,9 @@ export function sampleClip(clip: MotionClip, time: number): MotionFrame | null {
   const span = b.t - a.t;
   const u = span > 0 ? (time - a.t) / span : 0;
 
-  const positions = new Float32Array(JOINT_COUNT * 2);
+  const positions = new Float32Array(JOINT_COUNT * 3);
   const confidence = new Float32Array(JOINT_COUNT);
-  for (let i = 0; i < JOINT_COUNT * 2; i++) {
+  for (let i = 0; i < JOINT_COUNT * 3; i++) {
     positions[i] = a.positions[i] + (b.positions[i] - a.positions[i]) * u;
   }
   for (let i = 0; i < JOINT_COUNT; i++) {
@@ -197,13 +207,21 @@ export function sampleClip(clip: MotionClip, time: number): MotionFrame | null {
     t: time,
     positions,
     confidence,
-    root: { x: a.root.x + (b.root.x - a.root.x) * u, y: a.root.y + (b.root.y - a.root.y) * u },
+    root: {
+      x: a.root.x + (b.root.x - a.root.x) * u,
+      y: a.root.y + (b.root.y - a.root.y) * u,
+      z: a.root.z + (b.root.z - a.root.z) * u,
+    },
     facing: a.facing + (b.facing - a.facing) * u,
-    mirrored: u < 0.5 ? a.mirrored : b.mirrored,
   };
 }
 
-export function getJoint(frame: MotionFrame, name: JointName): { x: number; y: number; c: number } {
+export function getJoint(frame: MotionFrame, name: JointName): Vec3 & { c: number } {
   const i = JOINT_INDEX[name];
-  return { x: frame.positions[i * 2], y: frame.positions[i * 2 + 1], c: frame.confidence[i] };
+  return {
+    x: frame.positions[i * 3],
+    y: frame.positions[i * 3 + 1],
+    z: frame.positions[i * 3 + 2],
+    c: frame.confidence[i],
+  };
 }

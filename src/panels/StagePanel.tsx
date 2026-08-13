@@ -134,7 +134,7 @@ export function StagePanel() {
         <Checkbox label="左右反転して表示" checked={timing.mirror} onChange={(mirror) => setTiming({ mirror })} />
 
         <Slider
-          label="表示サイズ"
+          label="被写体の大きさ"
           min={0.5}
           max={1.5}
           step={0.01}
@@ -197,15 +197,14 @@ export function StagePanel() {
           hint={!analysis || analysis.beats.length === 0 ? 'ビート未検出のため無効です。' : undefined}
         />
 
-        {(['zoomPunch', 'particles', 'afterimage', 'bassPulse'] as const).map((key) => (
+        {(['zoomPunch', 'particles', 'bassPulse'] as const).map((key) => (
           <Slider
             key={key}
             label={
               {
                 zoomPunch: 'ズームパンチ',
                 particles: 'パーティクル',
-                afterimage: '残像',
-                bassPulse: '低音の波紋',
+                bassPulse: '低音の床発光',
               }[key]
             }
             min={0}

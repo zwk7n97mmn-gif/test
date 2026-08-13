@@ -18,10 +18,11 @@ export function MotionPanel() {
 
   const [engine, setEngine] = useState<{ available: boolean; reason?: string; hint?: string } | null>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [sourceKind, setSourceKind] = useState<'video' | 'camera'>('video');
   const [videoInfo, setVideoInfo] = useState<{ duration: number; width: number; height: number } | null>(null);
   const [start, setStart] = useState(0);
   const [length, setLength] = useState(8);
-  const [targetFps, setTargetFps] = useState(24);
+  const [targetFps, setTargetFps] = useState(20);
   const [model, setModel] = useState<'lite' | 'full'>('lite');
   const [progress, setProgress] = useState<{ ratio: number; message: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -34,8 +35,9 @@ export function MotionPanel() {
     );
   }, []);
 
-  const handleVideoSelected = async (selected: File) => {
+  const handleVideoSelected = async (selected: File, kind: 'video' | 'camera') => {
     setError(null);
+    setSourceKind(kind);
     setFile(null);
     setVideoInfo(null);
     if (selected.size > MAX_VIDEO_BYTES) {
@@ -67,6 +69,7 @@ export function MotionPanel() {
         end: Math.min(videoInfo.duration, start + length),
         targetFps,
         model,
+        sourceKind,
         signal: controller.signal,
         onProgress: (update) => setProgress({ ratio: update.ratio, message: update.message }),
       });
@@ -132,19 +135,38 @@ export function MotionPanel() {
           </Alert>
         )}
 
-        <label className="field-label" htmlFor="video-file">
-          動画ファイル（MP4 / WebM / MOV、300MB まで）
-        </label>
-        <input
-          id="video-file"
-          type="file"
-          accept="video/*"
-          disabled={progress !== null}
-          onChange={(event) => {
-            const selected = event.target.files?.[0];
-            if (selected) void handleVideoSelected(selected);
-          }}
-        />
+        <div className="btn-row">
+          <label className="btn btn-primary" style={{ flex: 1, cursor: 'pointer' }}>
+            🎬 動画を選ぶ
+            <input
+              type="file"
+              accept="video/*"
+              className="visually-hidden"
+              disabled={progress !== null}
+              onChange={(event) => {
+                const selected = event.target.files?.[0];
+                if (selected) void handleVideoSelected(selected, 'video');
+                event.target.value = '';
+              }}
+            />
+          </label>
+          <label className="btn" style={{ flex: 1, cursor: 'pointer' }}>
+            📷 カメラで撮る
+            <input
+              type="file"
+              accept="video/*"
+              capture="environment"
+              className="visually-hidden"
+              disabled={progress !== null}
+              onChange={(event) => {
+                const selected = event.target.files?.[0];
+                if (selected) void handleVideoSelected(selected, 'camera');
+                event.target.value = '';
+              }}
+            />
+          </label>
+        </div>
+        <p className="field-hint">MP4 / WebM / MOV、300MB まで。全身が入るように撮影してください。</p>
 
         {videoInfo && (
           <>

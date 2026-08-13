@@ -29,47 +29,56 @@ export const MP = {
   footR: 32,
 } as const;
 
-/** 正面を向いた人物の肩幅 / 胴長の目安。facing 推定の基準値。 */
-const FRONTAL_SHOULDER_RATIO = 0.72;
-
 /**
- * MediaPipe の 33 点ランドマーク（画像正規化座標）を、
- * 腰原点・胴長1のキャラクター非依存空間へ写像する。
+ * MediaPipe の 3D ワールドランドマーク（メートル単位・腰原点・Y下向き）を、
+ * 腰原点・胴長1・Y上向きのキャラクター非依存空間へ写像する。
  *
  * 「容姿だけを変えて動きは元動画から取る」という要件は、この正規化が担保する:
- * ここで体格情報（絶対サイズ・体型）を落とし、関節の相対配置＝動きだけを残す。
+ * ここで体格の絶対サイズを落とし、関節の相対配置＝動きだけを残す。
+ *
+ * @param world  worldLandmarks（3D, メートル）。これが動きの実体。
+ * @param screen 画面座標のランドマーク（0..1）。画面内での立ち位置の算出にのみ使う。
  */
 export function mapLandmarksToRig(
-  landmarks: readonly RawLandmark[],
+  world: readonly RawLandmark[],
+  screen: readonly RawLandmark[] | null,
   videoWidth: number,
   videoHeight: number,
   time: number,
 ): MotionFrame | null {
-  if (landmarks.length < 33) return null;
-  const aspect = videoHeight > 0 ? videoWidth / videoHeight : 1;
+  if (world.length < 33) return null;
 
-  // x をアスペクト補正して「画像高さ」を単位にそろえる（横長動画で体が歪むのを防ぐ）
-  const px = (i: number) => landmarks[i].x * aspect;
-  const py = (i: number) => landmarks[i].y;
-  const vis = (i: number) => clamp01(landmarks[i].visibility ?? 1);
+  // MediaPipe は Y 下向き・Z がカメラ奥方向。ここで Y 上・Z 手前の右手系へ揃える。
+  const px = (i: number) => world[i].x;
+  const py = (i: number) => -world[i].y;
+  const pz = (i: number) => -(world[i].z ?? 0);
+  const vis = (i: number) => clamp01(world[i].visibility ?? 1);
 
-  const hipMid = { x: (px(MP.hipL) + px(MP.hipR)) / 2, y: (py(MP.hipL) + py(MP.hipR)) / 2 };
-  const shoulderMid = {
-    x: (px(MP.shoulderL) + px(MP.shoulderR)) / 2,
-    y: (py(MP.shoulderL) + py(MP.shoulderR)) / 2,
-  };
+  const mid = (a: number, b: number) => ({
+    x: (px(a) + px(b)) / 2,
+    y: (py(a) + py(b)) / 2,
+    z: (pz(a) + pz(b)) / 2,
+  });
 
-  const torso = Math.hypot(shoulderMid.x - hipMid.x, shoulderMid.y - hipMid.y);
-  // 胴が潰れている＝真横 or 検出失敗。この姿勢を通すと後段でゼロ除算になる。
+  const hipMid = mid(MP.hipL, MP.hipR);
+  const shoulderMid = mid(MP.shoulderL, MP.shoulderR);
+
+  const torso = Math.hypot(
+    shoulderMid.x - hipMid.x,
+    shoulderMid.y - hipMid.y,
+    shoulderMid.z - hipMid.z,
+  );
+  // 胴が潰れている＝検出失敗。この姿勢を通すと後段でゼロ除算になる。
   if (!Number.isFinite(torso) || torso < 1e-4) return null;
 
-  const positions = new Float32Array(JOINT_COUNT * 2);
+  const positions = new Float32Array(JOINT_COUNT * 3);
   const confidence = new Float32Array(JOINT_COUNT);
 
-  const set = (name: JointName, x: number, y: number, c: number) => {
+  const set = (name: JointName, x: number, y: number, z: number, c: number) => {
     const i = JOINT_INDEX[name];
-    positions[i * 2] = (x - hipMid.x) / torso;
-    positions[i * 2 + 1] = (y - hipMid.y) / torso;
+    positions[i * 3] = (x - hipMid.x) / torso;
+    positions[i * 3 + 1] = (y - hipMid.y) / torso;
+    positions[i * 3 + 2] = (z - hipMid.z) / torso;
     confidence[i] = clamp01(c);
   };
 
@@ -77,73 +86,94 @@ export function mapLandmarksToRig(
 
   // 頭中心は両耳の中点を優先し、取れなければ鼻で代用する
   const earConfidence = Math.min(vis(MP.earL), vis(MP.earR));
+  const ears = mid(MP.earL, MP.earR);
   const head =
     earConfidence > 0.3
-      ? { x: (px(MP.earL) + px(MP.earR)) / 2, y: (py(MP.earL) + py(MP.earR)) / 2, c: earConfidence }
-      : { x: px(MP.nose), y: py(MP.nose), c: vis(MP.nose) };
+      ? { ...ears, c: earConfidence }
+      : { x: px(MP.nose), y: py(MP.nose), z: pz(MP.nose), c: vis(MP.nose) };
 
-  const torsoConfidence = Math.min(
-    vis(MP.hipL),
-    vis(MP.hipR),
-    vis(MP.shoulderL),
-    vis(MP.shoulderR),
+  const torsoConfidence = Math.min(vis(MP.hipL), vis(MP.hipR), vis(MP.shoulderL), vis(MP.shoulderR));
+
+  set('hip', hipMid.x, hipMid.y, hipMid.z, torsoConfidence);
+  set(
+    'spine',
+    lerp(hipMid.x, shoulderMid.x, 0.45),
+    lerp(hipMid.y, shoulderMid.y, 0.45),
+    lerp(hipMid.z, shoulderMid.z, 0.45),
+    torsoConfidence,
   );
-
-  set('hip', hipMid.x, hipMid.y, torsoConfidence);
-  set('spine', lerp(hipMid.x, shoulderMid.x, 0.45), lerp(hipMid.y, shoulderMid.y, 0.45), torsoConfidence);
-  set('chest', shoulderMid.x, shoulderMid.y, torsoConfidence);
+  set('chest', shoulderMid.x, shoulderMid.y, shoulderMid.z, torsoConfidence);
   set(
     'neck',
-    lerp(shoulderMid.x, head.x, 0.35),
-    lerp(shoulderMid.y, head.y, 0.35),
+    lerp(shoulderMid.x, head.x, 0.32),
+    lerp(shoulderMid.y, head.y, 0.32),
+    lerp(shoulderMid.z, head.z, 0.32),
     Math.min(torsoConfidence, head.c),
   );
-  set('head', head.x, head.y, head.c);
+  set('head', head.x, head.y, head.z, head.c);
 
-  set('shoulderL', px(MP.shoulderL), py(MP.shoulderL), vis(MP.shoulderL));
-  set('elbowL', px(MP.elbowL), py(MP.elbowL), vis(MP.elbowL));
-  set('wristL', px(MP.wristL), py(MP.wristL), vis(MP.wristL));
-  set('shoulderR', px(MP.shoulderR), py(MP.shoulderR), vis(MP.shoulderR));
-  set('elbowR', px(MP.elbowR), py(MP.elbowR), vis(MP.elbowR));
-  set('wristR', px(MP.wristR), py(MP.wristR), vis(MP.wristR));
+  const direct: Array<[JointName, number]> = [
+    ['shoulderL', MP.shoulderL],
+    ['elbowL', MP.elbowL],
+    ['wristL', MP.wristL],
+    ['shoulderR', MP.shoulderR],
+    ['elbowR', MP.elbowR],
+    ['wristR', MP.wristR],
+    ['hipL', MP.hipL],
+    ['kneeL', MP.kneeL],
+    ['ankleL', MP.ankleL],
+    ['footL', MP.footL],
+    ['hipR', MP.hipR],
+    ['kneeR', MP.kneeR],
+    ['ankleR', MP.ankleR],
+    ['footR', MP.footR],
+  ];
+  for (const [name, index] of direct) {
+    set(name, px(index), py(index), pz(index), vis(index));
+  }
 
-  set('hipL', px(MP.hipL), py(MP.hipL), vis(MP.hipL));
-  set('kneeL', px(MP.kneeL), py(MP.kneeL), vis(MP.kneeL));
-  set('ankleL', px(MP.ankleL), py(MP.ankleL), vis(MP.ankleL));
-  set('footL', px(MP.footL), py(MP.footL), vis(MP.footL));
-  set('hipR', px(MP.hipR), py(MP.hipR), vis(MP.hipR));
-  set('kneeR', px(MP.kneeR), py(MP.kneeR), vis(MP.kneeR));
-  set('ankleR', px(MP.ankleR), py(MP.ankleR), vis(MP.ankleR));
-  set('footR', px(MP.footR), py(MP.footR), vis(MP.footR));
-
-  const shoulderWidth = Math.hypot(
+  // 肩ベクトルの XZ 平面上の長さが胴長に対してどれだけあるかで正面度を測る
+  const shoulderSpan = Math.hypot(
     px(MP.shoulderL) - px(MP.shoulderR),
     py(MP.shoulderL) - py(MP.shoulderR),
+    pz(MP.shoulderL) - pz(MP.shoulderR),
   );
-  const facing = clamp01(shoulderWidth / torso / FRONTAL_SHOULDER_RATIO);
+  const shoulderFlat = Math.abs(px(MP.shoulderL) - px(MP.shoulderR));
+  const facing = shoulderSpan > 1e-6 ? clamp01(shoulderFlat / shoulderSpan) : 1;
 
-  return {
-    t: time,
-    positions,
-    confidence,
-    root: { x: (hipMid.x - aspect / 2) / torso, y: (hipMid.y - 0.5) / torso },
-    facing,
-    mirrored: px(MP.shoulderL) < px(MP.shoulderR),
-  };
+  // 画面内の立ち位置は screen ランドマークから求める（world は常に腰原点のため）
+  let root = { x: 0, y: 0, z: 0 };
+  if (screen && screen.length >= 33 && videoHeight > 0) {
+    const aspect = videoWidth / videoHeight;
+    const sx = ((screen[MP.hipL].x + screen[MP.hipR].x) / 2) * aspect;
+    const sy = (screen[MP.hipL].y + screen[MP.hipR].y) / 2;
+    const sTorso =
+      Math.hypot(
+        (screen[MP.shoulderL].x + screen[MP.shoulderR].x) / 2 * aspect - sx,
+        (screen[MP.shoulderL].y + screen[MP.shoulderR].y) / 2 - sy,
+      ) || 1;
+    root = {
+      x: (sx - aspect / 2) / sTorso,
+      // 画面座標は下向きが正なので反転して「上が＋」に揃える
+      y: -(sy - 0.5) / sTorso,
+      z: (world[MP.hipL].z ?? 0) + (world[MP.hipR].z ?? 0),
+    };
+  }
+
+  return { t: time, positions, confidence, root, facing };
 }
 
 export interface PostProcessOptions {
   /** 1€ Filter の最小カットオフ。小さいほど滑らか、大きいほど追従重視。 */
   minCutoff?: number;
   beta?: number;
-  /** この信頼度未満の関節は前後フレームから補間する */
-  confidenceFloor?: number;
 }
 
 /**
  * 抽出直後のフレーム列を仕上げる:
  *  - 検出できなかった区間を前後から線形補間で埋める（穴が長すぎる場合は埋めずに警告）
  *  - 1€ Filter でジッタ除去
+ *  - 上下が反転していないか検査して補正
  *  - 品質メトリクスを算出
  *
  * frames には「検出できなかったフレーム」を null で渡す。
@@ -172,7 +202,7 @@ export function postProcessFrames(
 
   for (let i = 0; i < total; i++) {
     if (filled[i] !== null) continue;
-    let start = i - 1;
+    const start = i - 1;
     let end = i;
     while (end < total && filled[end] === null) end++;
     const gap = end - i;
@@ -212,17 +242,32 @@ export function postProcessFrames(
   }
 
   // 1€ Filter による平滑化
-  const posFilter = new VectorOneEuro(JOINT_COUNT * 2, options.minCutoff ?? 1.2, options.beta ?? 0.02);
-  const rootFilter = new VectorOneEuro(2, options.minCutoff ?? 1.2, options.beta ?? 0.02);
-  const rootBuf = new Float32Array(2);
+  const posFilter = new VectorOneEuro(JOINT_COUNT * 3, options.minCutoff ?? 1.2, options.beta ?? 0.02);
+  const rootFilter = new VectorOneEuro(3, options.minCutoff ?? 1.2, options.beta ?? 0.02);
+  const rootBuf = new Float32Array(3);
 
   const smoothed: MotionFrame[] = kept.map((f) => {
-    const positions = posFilter.filter(f.positions, f.t, new Float32Array(JOINT_COUNT * 2));
+    const positions = posFilter.filter(f.positions, f.t, new Float32Array(JOINT_COUNT * 3));
     rootBuf[0] = f.root.x;
     rootBuf[1] = f.root.y;
-    const root = rootFilter.filter(rootBuf, f.t, new Float32Array(2));
-    return { ...f, positions, root: { x: root[0], y: root[1] } };
+    rootBuf[2] = f.root.z;
+    const root = rootFilter.filter(rootBuf, f.t, new Float32Array(3));
+    return { ...f, positions, root: { x: root[0], y: root[1], z: root[2] } };
   });
+
+  // 上下反転の検査: 頭が腰より下にあり続ける場合は Y 軸の向きを補正する
+  const headIndex = JOINT_INDEX.head;
+  let upright = 0;
+  for (const f of smoothed) {
+    if (f.positions[headIndex * 3 + 1] > 0) upright++;
+  }
+  if (upright < smoothed.length * 0.2) {
+    for (const f of smoothed) {
+      for (let i = 0; i < JOINT_COUNT; i++) f.positions[i * 3 + 1] *= -1;
+      f.root.y *= -1;
+    }
+    warnings.push('姿勢の上下が反転していたため自動補正しました。');
+  }
 
   let confidenceSum = 0;
   let confidenceCount = 0;
@@ -254,7 +299,6 @@ function cloneFrame(src: MotionFrame, t: number): MotionFrame {
     confidence: Float32Array.from(src.confidence),
     root: { ...src.root },
     facing: src.facing,
-    mirrored: src.mirrored,
   };
 }
 
@@ -272,9 +316,12 @@ function interpolateFrame(a: MotionFrame, b: MotionFrame, u: number, t: number):
     t,
     positions,
     confidence,
-    root: { x: a.root.x + (b.root.x - a.root.x) * u, y: a.root.y + (b.root.y - a.root.y) * u },
+    root: {
+      x: a.root.x + (b.root.x - a.root.x) * u,
+      y: a.root.y + (b.root.y - a.root.y) * u,
+      z: a.root.z + (b.root.z - a.root.z) * u,
+    },
     facing: a.facing + (b.facing - a.facing) * u,
-    mirrored: u < 0.5 ? a.mirrored : b.mirrored,
   };
 }
 
@@ -292,15 +339,14 @@ export function mirrorClip(clip: MotionClip): MotionClip {
   const frames = clip.frames.map((f) => {
     const positions = Float32Array.from(f.positions);
     const confidence = Float32Array.from(f.confidence);
-    for (let i = 0; i < JOINT_COUNT; i++) positions[i * 2] = -positions[i * 2];
+    for (let i = 0; i < JOINT_COUNT; i++) positions[i * 3] = -positions[i * 3];
     for (const [l, r] of swap) {
       const li = JOINT_INDEX[l];
       const ri = JOINT_INDEX[r];
-      swapAt(positions, li * 2, ri * 2);
-      swapAt(positions, li * 2 + 1, ri * 2 + 1);
+      for (let axis = 0; axis < 3; axis++) swapAt(positions, li * 3 + axis, ri * 3 + axis);
       swapAt(confidence, li, ri);
     }
-    return { ...f, positions, confidence, root: { x: -f.root.x, y: f.root.y }, mirrored: !f.mirrored };
+    return { ...f, positions, confidence, root: { ...f.root, x: -f.root.x } };
   });
   return { ...clip, id: crypto.randomUUID(), name: `${clip.name} (反転)`, frames };
 }

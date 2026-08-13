@@ -1,0 +1,35 @@
+{
+  "name": "Motion Muse — 3Dダンス動画メーカー",
+  "short_name": "Motion Muse",
+  "description": "音源のBPM・サビを解析し、動画から抽出したモーションを3Dキャラクターに適用して縦型ショート動画を作るツール。スマホだけで完結します。",
+  "id": "/",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#14121c",
+  "theme_color": "#1f1c2b",
+  "lang": "ja",
+  "dir": "ltr",
+  "categories": ["photo", "video", "entertainment"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

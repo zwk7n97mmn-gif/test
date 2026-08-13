@@ -30,9 +30,7 @@ export interface EffectSettings {
   zoomPunch: number;
   /** ビートで飛ぶパーティクル 0..1 */
   particles: number;
-  /** 残像 0..1 */
-  afterimage: number;
-  /** 低域に反応するフロアの波紋 0..1 */
+  /** 低域に反応するフロアの発光 0..1 */
   bassPulse: number;
 }
 
@@ -111,7 +109,7 @@ export function createProject(overrides: Partial<Project> = {}): Project {
       colorB: '#12303f',
       beatReactivity: 0.4,
     },
-    effects: { zoomPunch: 0.35, particles: 0.4, afterimage: 0.15, bassPulse: 0.35 },
+    effects: { zoomPunch: 0.35, particles: 0.4, bassPulse: 0.4 },
     caption: {
       enabled: false,
       text: '',
@@ -181,7 +179,6 @@ export function sanitizeProject(input: unknown): Project {
     effects: {
       zoomPunch: clamp(raw.effects?.zoomPunch, 0, 1, base.effects.zoomPunch),
       particles: clamp(raw.effects?.particles, 0, 1, base.effects.particles),
-      afterimage: clamp(raw.effects?.afterimage, 0, 1, base.effects.afterimage),
       bassPulse: clamp(raw.effects?.bassPulse, 0, 1, base.effects.bassPulse),
     },
     caption: {

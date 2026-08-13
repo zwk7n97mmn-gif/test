@@ -129,17 +129,30 @@ describe('プロジェクトの正規化', () => {
 
 describe('容姿パラメータの正規化', () => {
   it('範囲外の数値はクランプされる', () => {
-    const appearance = sanitizeAppearance({ headScale: 99, legLength: -3, lineWidth: 0 });
-    expect(appearance.headScale).toBe(1.6);
-    expect(appearance.legLength).toBe(0.8);
-    expect(appearance.lineWidth).toBe(0.5);
+    const appearance = sanitizeAppearance({
+      headScale: 99,
+      legLength: -3,
+      limbThickness: 0,
+      shoulderWidth: 42,
+    });
+    expect(appearance.headScale).toBe(1.3);
+    expect(appearance.legLength).toBe(0.85);
+    expect(appearance.limbThickness).toBe(0.8);
+    expect(appearance.shoulderWidth).toBe(1.25);
   });
 
   it('不正な色・列挙値は既定値に戻る', () => {
     const base = createDefaultAppearance();
-    const appearance = sanitizeAppearance({ hairColor: 'red', hairStyle: 'mohawk' as never });
+    const appearance = sanitizeAppearance({
+      hairColor: 'red',
+      hairStyle: 'mohawk' as never,
+      outfit: 'armor' as never,
+      build: 'giant' as never,
+    });
     expect(appearance.hairColor).toBe(base.hairColor);
     expect(appearance.hairStyle).toBe(base.hairStyle);
+    expect(appearance.outfit).toBe(base.outfit);
+    expect(appearance.build).toBe(base.build);
   });
 
   it('空白のみの名前は既定値になる', () => {

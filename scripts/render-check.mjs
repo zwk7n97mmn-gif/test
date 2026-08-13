@@ -81,6 +81,12 @@ async function main() {
     await page.waitForFunction(() => document.body.dataset.renderComplete === 'true', { timeout: 30_000 });
     await page.screenshot({ path: join(outDir, 'render-check.png'), fullPage: true });
 
+    // 顔まわりは全体図では潰れて見えないので、等倍のカットも別途保存する
+    const closeup = page.locator('figure', { hasText: '顔の寄り' }).first();
+    if ((await closeup.count()) > 0) {
+      await closeup.screenshot({ path: join(outDir, 'face.png'), scale: 'css' });
+    }
+
     // 実際に描画されたかを検査する（真っ黒/空のキャンバスを見逃さない）
     const stats = await page.evaluate(() =>
       Array.from(document.querySelectorAll('canvas')).map((canvas) => {
@@ -111,13 +117,25 @@ async function main() {
     }
 
     // アプリ本体も起動できることを確認する
-    const appPage = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    // スマートフォン想定のビューポートで確認する（iPhone 14 相当）
+    const appPage = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      deviceScaleFactor: 2,
+      isMobile: true,
+      hasTouch: true,
+    });
     appPage.on('pageerror', (err) => errors.push(`[app] ${String(err)}`));
     appPage.on('console', (msg) => {
       if (msg.type() === 'error') errors.push(`[app] ${msg.text()}`);
     });
     await appPage.goto(baseUrl, { waitUntil: 'load' });
     await appPage.waitForSelector('#main-content', { timeout: 30_000 });
+    // プレビューを数秒回してから、3D 描画のエラー（コンテキストロスト等）が
+    // 出ていないことを確認する。毎フレーム WebGL コンテキストを作ってしまう類の
+    // 退行をここで検出する。
+    await appPage.waitForTimeout(4000);
+    const stageErrors = await appPage.locator('.stage-note.is-error').allInnerTexts();
+    for (const text of stageErrors) errors.push(`[app] プレビューにエラー表示: ${text}`);
     await appPage.screenshot({ path: join(outDir, 'app.png'), fullPage: false });
 
     if (errors.length > 0) {

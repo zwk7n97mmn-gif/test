@@ -1,4 +1,4 @@
-import { FilesetResolver, PoseLandmarker, type PoseLandmarkerResult } from '@mediapipe/tasks-vision';
+import type { PoseLandmarker, PoseLandmarkerResult } from '@mediapipe/tasks-vision';
 import { mapLandmarksToRig, postProcessFrames } from './normalize';
 import type { MotionClip, MotionFrame } from './types';
 
@@ -14,7 +14,7 @@ export interface ExtractProgress {
 }
 
 export interface ExtractOptions {
-  /** 解析フレームレート。動画fpsより低くすると高速になる（既定 30） */
+  /** 解析フレームレート。動画fpsより低くすると高速になる（既定 24） */
   targetFps?: number;
   /** 解析する開始秒 */
   start?: number;
@@ -22,6 +22,8 @@ export interface ExtractOptions {
   end?: number;
   /** 'lite' は高速、'full' は高精度 */
   model?: 'lite' | 'full';
+  /** クリップに記録する取得元の種別 */
+  sourceKind?: 'video' | 'camera';
   signal?: AbortSignal;
   onProgress?: (progress: ExtractProgress) => void;
 }
@@ -47,12 +49,19 @@ const MODEL_PATHS: Record<'lite' | 'full', string> = {
 /** 解析対象の上限。これを超える動画はユーザーに区間指定を促す。 */
 export const MAX_CLIP_SECONDS = 60;
 
+/** 姿勢推定に渡す画像の長辺（px）。スマートフォンでの処理時間を抑えるための縮小。 */
+const ANALYSIS_LONG_EDGE = 480;
+
 let landmarkerCache: { key: string; instance: PoseLandmarker } | null = null;
 
 async function getLandmarker(model: 'lite' | 'full'): Promise<PoseLandmarker> {
   if (landmarkerCache?.key === model) return landmarkerCache.instance;
   landmarkerCache?.instance.close();
   landmarkerCache = null;
+
+  // 姿勢推定エンジンは 1MB 超あるため、実際に抽出するまで読み込まない
+  // （スマートフォンでの初回表示を軽くする）。
+  const { FilesetResolver, PoseLandmarker: PoseLandmarkerClass } = await import('@mediapipe/tasks-vision');
 
   let fileset;
   try {
@@ -66,7 +75,7 @@ async function getLandmarker(model: 'lite' | 'full'): Promise<PoseLandmarker> {
   }
 
   try {
-    const instance = await PoseLandmarker.createFromOptions(fileset, {
+    const instance = await PoseLandmarkerClass.createFromOptions(fileset, {
       baseOptions: { modelAssetPath: MODEL_PATHS[model], delegate: 'GPU' },
       runningMode: 'VIDEO',
       numPoses: 1,
@@ -80,7 +89,7 @@ async function getLandmarker(model: 'lite' | 'full'): Promise<PoseLandmarker> {
   } catch (gpuError) {
     // GPU デリゲートが使えない環境（一部の Linux/仮想GPU）では CPU にフォールバックする
     try {
-      const instance = await PoseLandmarker.createFromOptions(fileset, {
+      const instance = await PoseLandmarkerClass.createFromOptions(fileset, {
         baseOptions: { modelAssetPath: MODEL_PATHS[model], delegate: 'CPU' },
         runningMode: 'VIDEO',
         numPoses: 1,
@@ -212,7 +221,7 @@ export async function extractMotionFromVideo(
   file: File,
   options: ExtractOptions = {},
 ): Promise<MotionClip> {
-  const { targetFps = 30, model = 'lite', signal, onProgress } = options;
+  const { targetFps = 24, model = 'lite', signal, onProgress } = options;
   if (targetFps <= 0 || targetFps > 60) {
     throw new PoseExtractionError('解析フレームレートは 1〜60 の範囲で指定してください。');
   }
@@ -239,9 +248,14 @@ export async function extractMotionFromVideo(
     }
 
     const frameCount = Math.max(1, Math.floor((end - start) * targetFps));
+
+    // スマートフォンでの処理落ちを避けるため、推定入力は長辺 480px に縮小する。
+    // MediaPipe は内部でさらに縮小するため、これによる精度低下はほぼ無い。
+    const longest = Math.max(video.videoWidth, video.videoHeight);
+    const scale = longest > ANALYSIS_LONG_EDGE ? ANALYSIS_LONG_EDGE / longest : 1;
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) throw new PoseExtractionError('Canvas 2D コンテキストを作成できませんでした。');
 
@@ -263,9 +277,11 @@ export async function extractMotionFromVideo(
         throw new PoseExtractionError('姿勢推定の実行中にエラーが発生しました。', err);
       }
 
-      const landmarks = result.landmarks?.[0];
-      const frame = landmarks
-        ? mapLandmarksToRig(landmarks, video.videoWidth, video.videoHeight, i / targetFps)
+      // 動きの実体は worldLandmarks（メートル単位の3D）。画面座標は立ち位置の算出にのみ使う。
+      const world = result.worldLandmarks?.[0];
+      const screen = result.landmarks?.[0] ?? null;
+      const frame = world
+        ? mapLandmarksToRig(world, screen, video.videoWidth, video.videoHeight, i / targetFps)
         : null;
       rawFrames.push(frame);
 
@@ -301,7 +317,7 @@ export async function extractMotionFromVideo(
       duration: processed.frames[processed.frames.length - 1].t,
       frames: processed.frames,
       source: {
-        kind: 'video',
+        kind: options.sourceKind ?? 'video',
         fileName: file.name,
         backend: `mediapipe-pose-${model}`,
         width: video.videoWidth,

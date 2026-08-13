@@ -41,11 +41,11 @@ export function Timeline({ analysis, duration, time, range, onSeek }: TimelinePr
     const parentWidth = canvas.parentElement?.clientWidth ?? 600;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const width = Math.max(200, parentWidth);
-    const height = 92;
+    const height = canvas.parentElement?.clientHeight || 62;
     canvas.width = width * dpr;
     canvas.height = height * dpr;
     canvas.style.width = '100%';
-    canvas.style.height = `${height}px`;
+    canvas.style.height = '100%';
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -61,19 +61,19 @@ export function Timeline({ analysis, duration, time, range, onSeek }: TimelinePr
         const x = toX(section.start);
         const w = Math.max(1, toX(section.end) - x);
         ctx.fillStyle = withAlpha(SECTION_COLORS[section.kind], section.kind === 'hook' ? 0.85 : 0.5);
-        ctx.fillRect(x, 0, w, 16);
+        ctx.fillRect(x, 0, w, 13);
         if (w > 48) {
           ctx.fillStyle = '#ffffff';
           ctx.font = '600 10px system-ui, sans-serif';
           ctx.textBaseline = 'middle';
-          ctx.fillText(SECTION_LABELS[section.kind], x + 4, 8);
+          ctx.fillText(SECTION_LABELS[section.kind], x + 4, 7);
         }
       }
     }
 
     // 波形
-    const waveTop = 22;
-    const waveHeight = height - waveTop - 18;
+    const waveTop = 18;
+    const waveHeight = height - waveTop - 14;
     const waveform = analysis?.waveform;
     ctx.fillStyle = '#8f86b5';
     if (waveform && waveform.length > 0) {
@@ -94,7 +94,7 @@ export function Timeline({ analysis, duration, time, range, onSeek }: TimelinePr
         const x = toX(beat.time);
         const isDownbeat = beat.indexInBar === 0;
         ctx.fillStyle = isDownbeat ? 'rgba(255, 143, 192, 0.95)' : 'rgba(255, 255, 255, 0.28)';
-        ctx.fillRect(x, height - 16, isDownbeat ? 2 : 1, isDownbeat ? 14 : 8);
+        ctx.fillRect(x, height - 12, isDownbeat ? 2 : 1, isDownbeat ? 11 : 6);
       }
     }
 

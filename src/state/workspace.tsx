@@ -47,6 +47,13 @@ interface WorkspaceValue {
 
   setTrends: (entries: TrendEntry[]) => void;
   refreshStorage: () => void;
+
+  /**
+   * WebGL コンテキストはアプリ全体で 1 つを共有しているため、書き出し中は
+   * プレビューの描画を止める必要がある。そのための排他フラグ。
+   */
+  renderBusy: boolean;
+  setRenderBusy: (busy: boolean) => void;
 }
 
 const WorkspaceContext = createContext<WorkspaceValue | null>(null);
@@ -63,6 +70,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [characters, setCharacters] = useState<CharacterAppearance[]>([]);
   const [trends, setTrendState] = useState<TrendEntry[]>([]);
   const [storage, setStorage] = useState<{ usage: number; quota: number } | null>(null);
+  const [renderBusy, setRenderBusy] = useState(false);
 
   const audioBuffers = useRef(new Map<string, AudioBuffer>());
   const saveTimer = useRef<number | null>(null);
@@ -278,6 +286,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     removeCharacterPreset,
     setTrends: setTrendState,
     refreshStorage,
+    renderBusy,
+    setRenderBusy,
   };
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;

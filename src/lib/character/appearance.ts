@@ -1,43 +1,30 @@
-export const HAIR_STYLES = ['twintail', 'long', 'bob', 'ponytail', 'short'] as const;
-export const EYE_STYLES = ['round', 'sharp', 'sleepy'] as const;
-export const OUTFITS = ['seifuku', 'idol', 'hoodie', 'dress'] as const;
-export const ACCESSORIES = ['none', 'ribbon', 'headphone', 'hairpin'] as const;
-export const BODY_TYPES = ['slim', 'standard', 'soft'] as const;
+export const HAIR_STYLES = ['short', 'bob', 'long', 'ponytail', 'bun'] as const;
+export const OUTFITS = ['tshirt', 'hoodie', 'tanktop', 'dress', 'jacket'] as const;
+export const BUILDS = ['slim', 'average', 'athletic', 'curvy'] as const;
 
 export type HairStyle = (typeof HAIR_STYLES)[number];
-export type EyeStyle = (typeof EYE_STYLES)[number];
 export type Outfit = (typeof OUTFITS)[number];
-export type Accessory = (typeof ACCESSORIES)[number];
-export type BodyType = (typeof BODY_TYPES)[number];
+export type Build = (typeof BUILDS)[number];
 
 export const HAIR_STYLE_LABELS: Record<HairStyle, string> = {
-  twintail: 'ツインテール',
-  long: 'ロング',
-  bob: 'ボブ',
-  ponytail: 'ポニーテール',
   short: 'ショート',
-};
-export const EYE_STYLE_LABELS: Record<EyeStyle, string> = {
-  round: 'たれ目（丸）',
-  sharp: 'つり目',
-  sleepy: 'ジト目',
+  bob: 'ボブ',
+  long: 'ロング',
+  ponytail: 'ポニーテール',
+  bun: 'お団子',
 };
 export const OUTFIT_LABELS: Record<Outfit, string> = {
-  seifuku: 'セーラー服',
-  idol: 'アイドル衣装',
-  hoodie: 'パーカー',
+  tshirt: 'Tシャツ + パンツ',
+  hoodie: 'パーカー + パンツ',
+  tanktop: 'タンクトップ + ショーツ',
   dress: 'ワンピース',
+  jacket: 'ジャケット + スカート',
 };
-export const ACCESSORY_LABELS: Record<Accessory, string> = {
-  none: 'なし',
-  ribbon: 'リボン',
-  headphone: 'ヘッドホン',
-  hairpin: 'ヘアピン',
-};
-export const BODY_TYPE_LABELS: Record<BodyType, string> = {
+export const BUILD_LABELS: Record<Build, string> = {
   slim: 'スリム',
-  standard: 'スタンダード',
-  soft: 'ソフト',
+  average: 'ふつう',
+  athletic: 'アスリート',
+  curvy: 'グラマー',
 };
 
 /**
@@ -48,57 +35,53 @@ export const BODY_TYPE_LABELS: Record<BodyType, string> = {
 export interface CharacterAppearance {
   id: string;
   name: string;
-  /** 頭の大きさ。1.0 で 7頭身相当、大きいほどデフォルメ寄り。0.7〜1.6 */
+  /** 頭の大きさ。1.0 で約7頭身。0.8〜1.3 */
   headScale: number;
-  /** 脚の長さ倍率。0.8〜1.25 */
+  /** 脚の長さ倍率。0.85〜1.2 */
   legLength: number;
-  bodyType: BodyType;
-  skinColor: string;
+  /** 肩幅倍率。0.8〜1.25 */
+  shoulderWidth: number;
+  /** 手足の太さ倍率。0.8〜1.3 */
+  limbThickness: number;
+  build: Build;
+  skinTone: string;
   hairStyle: HairStyle;
   hairColor: string;
-  /** 毛先のグラデーション色 */
-  hairTipColor: string;
-  eyeStyle: EyeStyle;
   eyeColor: string;
   outfit: Outfit;
-  outfitColor: string;
-  outfitAccentColor: string;
-  accessory: Accessory;
-  accessoryColor: string;
-  /** 輪郭線の色 */
-  lineColor: string;
-  /** 輪郭線の太さ倍率 0.5〜2.0 */
-  lineWidth: number;
-  blush: boolean;
+  topColor: string;
+  bottomColor: string;
+  shoeColor: string;
+  /** 肌の質感（0=マット, 1=ツヤあり） */
+  skinGloss: number;
 }
 
 export const APPEARANCE_LIMITS = {
-  headScale: { min: 0.7, max: 1.6, step: 0.01 },
-  legLength: { min: 0.8, max: 1.25, step: 0.01 },
-  lineWidth: { min: 0.5, max: 2.0, step: 0.05 },
+  headScale: { min: 0.8, max: 1.3, step: 0.01 },
+  legLength: { min: 0.85, max: 1.2, step: 0.01 },
+  shoulderWidth: { min: 0.8, max: 1.25, step: 0.01 },
+  limbThickness: { min: 0.8, max: 1.3, step: 0.01 },
+  skinGloss: { min: 0, max: 1, step: 0.01 },
 } as const;
 
 export function createDefaultAppearance(overrides: Partial<CharacterAppearance> = {}): CharacterAppearance {
   return {
     id: crypto.randomUUID(),
     name: '新しいキャラクター',
-    headScale: 1.0,
-    legLength: 1.0,
-    bodyType: 'standard',
-    skinColor: '#ffe0d2',
-    hairStyle: 'twintail',
-    hairColor: '#5b4bd6',
-    hairTipColor: '#9d8bff',
-    eyeStyle: 'round',
-    eyeColor: '#2f8fd8',
-    outfit: 'seifuku',
-    outfitColor: '#2c3552',
-    outfitAccentColor: '#f2f4fb',
-    accessory: 'ribbon',
-    accessoryColor: '#e0537a',
-    lineColor: '#3a2f4a',
-    lineWidth: 1,
-    blush: true,
+    headScale: 1,
+    legLength: 1,
+    shoulderWidth: 1,
+    limbThickness: 1,
+    build: 'average',
+    skinTone: '#e8b89b',
+    hairStyle: 'long',
+    hairColor: '#2e2118',
+    eyeColor: '#4a3428',
+    outfit: 'tshirt',
+    topColor: '#e8e6ef',
+    bottomColor: '#3a4356',
+    shoeColor: '#26262c',
+    skinGloss: 0.25,
     ...overrides,
   };
 }
@@ -107,43 +90,37 @@ export function createDefaultAppearance(overrides: Partial<CharacterAppearance> 
 export function createSampleAppearances(): CharacterAppearance[] {
   return [
     createDefaultAppearance({
-      name: 'ミク風ツインテ',
-      hairStyle: 'twintail',
-      hairColor: '#2fb5a8',
-      hairTipColor: '#7fe6dc',
-      eyeColor: '#1c9c92',
-      outfit: 'seifuku',
-      outfitColor: '#26313f',
-      outfitAccentColor: '#9fe8e0',
-      accessory: 'ribbon',
-      accessoryColor: '#37c2b4',
-    }),
-    createDefaultAppearance({
-      name: 'ストリート系ボブ',
-      hairStyle: 'bob',
-      hairColor: '#d8536b',
-      hairTipColor: '#ffa8ba',
-      eyeStyle: 'sharp',
-      eyeColor: '#8b3fd0',
-      outfit: 'hoodie',
-      outfitColor: '#33384a',
-      outfitAccentColor: '#f5c542',
-      accessory: 'headphone',
-      accessoryColor: '#f5c542',
-      headScale: 1.12,
-    }),
-    createDefaultAppearance({
-      name: 'ステージ衣装',
+      name: 'ストリート',
       hairStyle: 'ponytail',
-      hairColor: '#c9a227',
-      hairTipColor: '#ffe7a3',
-      eyeStyle: 'round',
-      eyeColor: '#e0537a',
-      outfit: 'idol',
-      outfitColor: '#f2f4fb',
-      outfitAccentColor: '#e0537a',
-      accessory: 'hairpin',
-      accessoryColor: '#e0537a',
+      hairColor: '#3a2a20',
+      outfit: 'hoodie',
+      topColor: '#d8dae2',
+      bottomColor: '#2b2f3a',
+      shoeColor: '#f0f0f2',
+      build: 'slim',
+    }),
+    createDefaultAppearance({
+      name: 'ダンサー',
+      hairStyle: 'bun',
+      hairColor: '#1c1512',
+      skinTone: '#8d5a3c',
+      outfit: 'tanktop',
+      topColor: '#1f2430',
+      bottomColor: '#1f2430',
+      shoeColor: '#e05a70',
+      build: 'athletic',
+      limbThickness: 1.06,
+    }),
+    createDefaultAppearance({
+      name: 'ステージ',
+      hairStyle: 'long',
+      hairColor: '#6b4a2a',
+      skinTone: '#f0c9ad',
+      outfit: 'dress',
+      topColor: '#c93b6b',
+      bottomColor: '#c93b6b',
+      shoeColor: '#2b2b30',
+      build: 'curvy',
       legLength: 1.08,
     }),
   ];
@@ -161,34 +138,33 @@ export function sanitizeAppearance(input: Partial<CharacterAppearance>): Charact
     if (!Number.isFinite(n)) return fallback;
     return Math.min(max, Math.max(min, n));
   };
+  const L = APPEARANCE_LIMITS;
 
   return {
     id: typeof input.id === 'string' && input.id ? input.id : base.id,
     name:
-      typeof input.name === 'string' && input.name.trim()
-        ? input.name.trim().slice(0, 60)
-        : base.name,
-    headScale: pickNumber(input.headScale, APPEARANCE_LIMITS.headScale.min, APPEARANCE_LIMITS.headScale.max, base.headScale),
-    legLength: pickNumber(input.legLength, APPEARANCE_LIMITS.legLength.min, APPEARANCE_LIMITS.legLength.max, base.legLength),
-    bodyType: pickEnum(input.bodyType, BODY_TYPES, base.bodyType),
-    skinColor: pickColor(input.skinColor, base.skinColor),
+      typeof input.name === 'string' && input.name.trim() ? input.name.trim().slice(0, 60) : base.name,
+    headScale: pickNumber(input.headScale, L.headScale.min, L.headScale.max, base.headScale),
+    legLength: pickNumber(input.legLength, L.legLength.min, L.legLength.max, base.legLength),
+    shoulderWidth: pickNumber(input.shoulderWidth, L.shoulderWidth.min, L.shoulderWidth.max, base.shoulderWidth),
+    limbThickness: pickNumber(input.limbThickness, L.limbThickness.min, L.limbThickness.max, base.limbThickness),
+    build: pickEnum(input.build, BUILDS, base.build),
+    skinTone: pickColor(input.skinTone, base.skinTone),
     hairStyle: pickEnum(input.hairStyle, HAIR_STYLES, base.hairStyle),
     hairColor: pickColor(input.hairColor, base.hairColor),
-    hairTipColor: pickColor(input.hairTipColor, base.hairTipColor),
-    eyeStyle: pickEnum(input.eyeStyle, EYE_STYLES, base.eyeStyle),
     eyeColor: pickColor(input.eyeColor, base.eyeColor),
     outfit: pickEnum(input.outfit, OUTFITS, base.outfit),
-    outfitColor: pickColor(input.outfitColor, base.outfitColor),
-    outfitAccentColor: pickColor(input.outfitAccentColor, base.outfitAccentColor),
-    accessory: pickEnum(input.accessory, ACCESSORIES, base.accessory),
-    accessoryColor: pickColor(input.accessoryColor, base.accessoryColor),
-    lineColor: pickColor(input.lineColor, base.lineColor),
-    lineWidth: pickNumber(input.lineWidth, APPEARANCE_LIMITS.lineWidth.min, APPEARANCE_LIMITS.lineWidth.max, base.lineWidth),
-    blush: typeof input.blush === 'boolean' ? input.blush : base.blush,
+    topColor: pickColor(input.topColor, base.topColor),
+    bottomColor: pickColor(input.bottomColor, base.bottomColor),
+    shoeColor: pickColor(input.shoeColor, base.shoeColor),
+    skinGloss: pickNumber(input.skinGloss, L.skinGloss.min, L.skinGloss.max, base.skinGloss),
   };
 }
 
-/** 容姿から骨長（胴長=1 の単位）を導出する。ここが体格差を吸収する層。 */
+/**
+ * 容姿から骨長（胴長=1 の単位）を導出する。ここが体格差を吸収する層。
+ * 実際の人体比率に近づけてあり、既定値でおよそ 7 頭身になる。
+ */
 export interface CharacterRig {
   hipToSpine: number;
   spineToChest: number;
@@ -198,32 +174,56 @@ export interface CharacterRig {
   shoulderOffset: number;
   upperArm: number;
   foreArm: number;
+  hand: number;
   hipOffset: number;
   thigh: number;
   shin: number;
   foot: number;
-  /** 胴の幅（描画用） */
-  torsoWidth: number;
-  limbWidth: number;
+  /** 胴の半径（前後は torsoDepth 倍） */
+  torsoRadius: number;
+  torsoDepth: number;
+  /** 腕・脚の半径 */
+  armRadius: number;
+  legRadius: number;
+  /** 全身の高さ（足裏から頭頂まで、胴長単位）。カメラ配置に使う。 */
+  totalHeight: number;
 }
 
+const BUILD_FACTORS: Record<Build, { torso: number; limb: number; hip: number; shoulder: number }> = {
+  slim: { torso: 0.9, limb: 0.88, hip: 0.94, shoulder: 0.95 },
+  average: { torso: 1, limb: 1, hip: 1, shoulder: 1 },
+  athletic: { torso: 1.04, limb: 1.1, hip: 0.98, shoulder: 1.08 },
+  curvy: { torso: 1.12, limb: 1.05, hip: 1.14, shoulder: 0.98 },
+};
+
 export function buildRig(appearance: CharacterAppearance): CharacterRig {
-  const widthScale = appearance.bodyType === 'slim' ? 0.88 : appearance.bodyType === 'soft' ? 1.14 : 1;
+  const f = BUILD_FACTORS[appearance.build];
   const leg = appearance.legLength;
+  const thigh = 1.02 * leg;
+  const shin = 0.96 * leg;
+  const foot = 0.26;
+  const headRadius = 0.24 * appearance.headScale;
+  const neckToHead = 0.3 * appearance.headScale;
+
   return {
-    hipToSpine: 0.45,
-    spineToChest: 0.55,
-    chestToNeck: 0.2,
-    neckToHead: 0.3 * appearance.headScale,
-    headRadius: 0.42 * appearance.headScale,
-    shoulderOffset: 0.33 * widthScale,
-    upperArm: 0.58,
-    foreArm: 0.54,
-    hipOffset: 0.17 * widthScale,
-    thigh: 0.92 * leg,
-    shin: 0.88 * leg,
-    foot: 0.2,
-    torsoWidth: 0.62 * widthScale,
-    limbWidth: 0.15 * widthScale,
+    hipToSpine: 0.42,
+    spineToChest: 0.58,
+    chestToNeck: 0.16,
+    neckToHead,
+    headRadius,
+    shoulderOffset: 0.4 * appearance.shoulderWidth * f.shoulder,
+    upperArm: 0.7,
+    foreArm: 0.62,
+    hand: 0.2,
+    hipOffset: 0.17 * f.hip,
+    thigh,
+    shin,
+    foot,
+    torsoRadius: 0.3 * f.torso,
+    torsoDepth: 0.72,
+    armRadius: 0.082 * appearance.limbThickness * f.limb,
+    legRadius: 0.105 * appearance.limbThickness * f.limb,
+    // 足首の高さ + 脚 + 胴 + 首 + 頭（頭頂まで）
+    totalHeight: 0.1 + thigh + shin + 1 + 0.16 + neckToHead + headRadius,
   };
 }

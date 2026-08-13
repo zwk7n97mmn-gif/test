@@ -1,10 +1,8 @@
 import type { AudioAnalysis } from '../audio/types';
-import { buildRig, type CharacterAppearance } from '../character/appearance';
-import { drawCharacter, type CharacterDynamics } from '../character/draw';
-import { retarget } from '../character/retarget';
 import { sampleClip, type MotionClip, type MotionFrame } from '../pose/types';
 import { canvasSize, type Project } from '../project/types';
-import { mix, shade, withAlpha } from '../util/color';
+import { withAlpha } from '../util/color';
+import { getStage, isWebGLAvailable, recoverStageIfLost } from './stage';
 
 export interface RenderInput {
   project: Project;
@@ -15,98 +13,90 @@ export interface RenderInput {
 /** 「まだ素材が無い」ことを画面上で伝えるための状態。 */
 export type EmptyReason = 'no-motion' | 'no-audio' | null;
 
+export interface RenderResult {
+  emptyReason: EmptyReason;
+  /** 3D 描画に失敗した場合の理由（UI にそのまま出す） */
+  error: string | null;
+}
+
 const BEAT_DECAY = 0.16;
 
 /**
- * 1フレームを合成する。時刻 t のみに依存する純関数的な描画（内部に蓄積状態を持たない）ため、
- * プレビューのシークでも書き出しでも完全に同じ絵になる。
+ * 1フレームを合成する。
+ *
+ * 3D ステージを描画してから 2D のテロップを重ねる。時刻 t のみに依存する
+ * 純粋な処理（内部に蓄積状態を持たない）ため、プレビューのシークでも
+ * 書き出しでも完全に同じ絵になる。
  */
 export function renderFrame(
   ctx: CanvasRenderingContext2D,
   time: number,
   input: RenderInput,
-): { emptyReason: EmptyReason } {
+): RenderResult {
   const { project, clip, analysis } = input;
-  const { width, height } = canvasSize(project.canvas.presetId);
+  const width = ctx.canvas.width;
+  const height = ctx.canvas.height;
 
   const beat = beatEnergyAt(analysis, time);
   const bass = bandValueAt(analysis, time, 'low');
 
-  drawBackground(ctx, width, height, project, beat, bass, time);
+  const sampled =
+    clip && clip.frames.length > 0 ? sampleClip(clip, motionTimeAt(time, project, clip, analysis)) : null;
+  const frame = sampled && project.timing.mirror ? mirrorFrame(sampled) : sampled;
 
-  if (!clip || clip.frames.length === 0) {
-    drawPlaceholder(ctx, width, height, 'モーションが未設定です');
-    return { emptyReason: 'no-motion' };
+  if (!isWebGLAvailable()) {
+    drawFallback(ctx, width, height, project);
+    drawPlaceholder(ctx, width, height, '3D描画（WebGL）を利用できません');
+    return { emptyReason: null, error: 'この端末／ブラウザでは 3D 描画（WebGL）を利用できません。' };
   }
 
-  const motionTime = motionTimeAt(time, project, clip, analysis);
-  const frame = sampleClip(clip, motionTime);
-  if (!frame) {
-    drawPlaceholder(ctx, width, height, 'このフレームには姿勢データがありません');
-    return { emptyReason: 'no-motion' };
-  }
-
-  const rig = buildRig(project.appearance);
-  const nominalHeight =
-    rig.headRadius * 1.6 +
-    rig.neckToHead +
-    rig.chestToNeck +
-    rig.spineToChest +
-    rig.hipToSpine +
-    rig.thigh +
-    rig.shin +
-    rig.foot;
-  const legHeight = rig.thigh + rig.shin + rig.foot;
-
-  const zoom = 1 + beat * project.effects.zoomPunch * 0.06;
-  const pixelsPerUnit = ((height * 0.8 * project.timing.scale) / nominalHeight) * zoom;
-
-  const originX = width / 2 + frame.root.x * project.timing.rootMotion * pixelsPerUnit;
-  const originY =
-    height * project.timing.anchorY -
-    legHeight * pixelsPerUnit +
-    frame.root.y * project.timing.rootMotion * pixelsPerUnit * 0.5;
-
-  // 残像（過去フレームを薄く重ねる）。時刻依存のみなので再現性がある。
-  if (project.effects.afterimage > 0.01) {
-    for (const [lag, alpha] of [
-      [0.07, 0.22],
-      [0.14, 0.11],
-    ] as const) {
-      const past = sampleClip(clip, motionTimeAt(time - lag, project, clip, analysis));
-      if (!past) continue;
-      ctx.save();
-      ctx.globalAlpha = alpha * project.effects.afterimage;
-      ctx.translate(originX, originY);
-      ctx.scale(pixelsPerUnit, pixelsPerUnit);
-      if (project.timing.mirror) ctx.scale(-1, 1);
-      drawCharacter(ctx, retarget(past, rig), project.appearance, rig, dynamicsFor(clip, past, time, beat, project));
-      ctx.restore();
+  let error: string | null = null;
+  try {
+    // コンテキストが失われていれば作り直す（モバイルではメモリ逼迫で起こりうる）
+    if (!recoverStageIfLost()) {
+      drawFallback(ctx, width, height, project);
+      drawPlaceholder(ctx, width, height, '3D描画を復旧できませんでした');
+      return {
+        emptyReason: null,
+        error: '3D描画のコンテキストを復旧できませんでした。他のタブやアプリを閉じて再読み込みしてください。',
+      };
     }
+    const stage = getStage();
+    if (stage.lost) {
+      drawFallback(ctx, width, height, project);
+      drawPlaceholder(ctx, width, height, '3D描画を復旧しています…');
+      return { emptyReason: null, error: null };
+    }
+    stage.setSize(width, height);
+    stage.render({ project, frame, analysis, time, beat, bass });
+    ctx.drawImage(stage.canvas, 0, 0, width, height);
+  } catch (err) {
+    drawFallback(ctx, width, height, project);
+    error = err instanceof Error ? err.message : '3D描画でエラーが発生しました。';
+    drawPlaceholder(ctx, width, height, '3D描画でエラーが発生しました');
+    return { emptyReason: null, error };
   }
 
-  ctx.save();
-  ctx.translate(originX, originY);
-  ctx.scale(pixelsPerUnit, pixelsPerUnit);
-  if (project.timing.mirror) ctx.scale(-1, 1);
-  drawCharacter(
-    ctx,
-    retarget(frame, rig),
-    project.appearance,
-    rig,
-    dynamicsFor(clip, frame, time, beat, project),
-  );
-  ctx.restore();
-
-  if (project.effects.particles > 0.01) {
-    drawParticles(ctx, width, height, project, analysis, time);
+  if (!frame) {
+    drawPlaceholder(ctx, width, height, 'モーションが未設定です');
+    return { emptyReason: 'no-motion', error: null };
   }
 
   if (project.caption.enabled && project.caption.text.trim()) {
     drawCaption(ctx, width, height, project);
   }
 
-  return { emptyReason: analysis ? null : 'no-audio' };
+  return { emptyReason: analysis ? null : 'no-audio', error: null };
+}
+
+/**
+ * X 座標を反転して鏡像の振り付けにする。
+ * 左右の手足のメッシュは同一形状なので、関節の入れ替えは不要（X 反転だけで正しい鏡像になる）。
+ */
+export function mirrorFrame(frame: MotionFrame): MotionFrame {
+  const positions = Float32Array.from(frame.positions);
+  for (let i = 0; i < positions.length; i += 3) positions[i] = -positions[i];
+  return { ...frame, positions, root: { ...frame.root, x: -frame.root.x } };
 }
 
 // ---------------------------------------------------------------------------
@@ -152,7 +142,6 @@ export function beatOrigin(analysis: AudioAnalysis): number {
 /** 直近のビートからの減衰で 0..1 のビート強度を返す。 */
 export function beatEnergyAt(analysis: AudioAnalysis | null, time: number): number {
   if (!analysis || analysis.beats.length === 0) return 0;
-  // 二分探索で直前のビートを求める
   let lo = 0;
   let hi = analysis.beats.length - 1;
   if (time < analysis.beats[0].time) return 0;
@@ -176,162 +165,22 @@ function bandValueAt(analysis: AudioAnalysis | null, time: number, band: 'low' |
   return arr[index];
 }
 
-function dynamicsFor(
-  clip: MotionClip,
-  frame: MotionFrame,
-  time: number,
-  beat: number,
-  project: Project,
-): CharacterDynamics {
-  // 髪・スカートの慣性: 直前フレームとのルート＆頭部の水平速度から求める
-  const prev = sampleClip(clip, Math.max(0, frame.t - 0.08));
-  const dx = prev ? frame.root.x - prev.root.x + (frame.positions[8] - prev.positions[8]) : 0;
-  const sway = Math.max(-1, Math.min(1, -dx * 6));
-  const bob = prev ? Math.max(-1, Math.min(1, (frame.root.y - prev.root.y) * 6)) : 0;
-  // 3.1秒周期の瞬き（0.12秒だけ閉じる）。時刻の関数なので再現性がある。
-  const cycle = (time % 3.1) / 3.1;
-  const blink = cycle > 0.96 ? Math.sin(((cycle - 0.96) / 0.04) * Math.PI) : 0;
-  return { sway, bob, blink, beat: beat * project.effects.zoomPunch };
-}
-
 // ---------------------------------------------------------------------------
-// 背景・演出
+// 2D オーバーレイ
 // ---------------------------------------------------------------------------
 
-function drawBackground(
+/** WebGL が使えない場合でも、背景だけは 2D で描いて画面を成立させる。 */
+function drawFallback(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
   project: Project,
-  beat: number,
-  bass: number,
-  time: number,
 ): void {
-  const { background } = project;
-  const pulse = beat * background.beatReactivity;
-  const colorA = shade(background.colorA, pulse * 0.25);
-  const colorB = shade(background.colorB, pulse * 0.15);
-
-  ctx.save();
-  switch (background.kind) {
-    case 'solid': {
-      ctx.fillStyle = colorA;
-      ctx.fillRect(0, 0, width, height);
-      break;
-    }
-    case 'gradient': {
-      const g = ctx.createLinearGradient(0, 0, width * 0.4, height);
-      g.addColorStop(0, colorA);
-      g.addColorStop(1, colorB);
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, width, height);
-      break;
-    }
-    case 'stage': {
-      ctx.fillStyle = shade(colorB, -0.5);
-      ctx.fillRect(0, 0, width, height);
-      const spot = ctx.createRadialGradient(
-        width / 2,
-        height * 0.4,
-        width * 0.05,
-        width / 2,
-        height * 0.55,
-        width * (0.75 + pulse * 0.1),
-      );
-      spot.addColorStop(0, withAlpha(colorA, 0.95));
-      spot.addColorStop(1, withAlpha(shade(colorB, -0.6), 0));
-      ctx.fillStyle = spot;
-      ctx.fillRect(0, 0, width, height);
-      break;
-    }
-    case 'grid': {
-      ctx.fillStyle = colorA;
-      ctx.fillRect(0, 0, width, height);
-      ctx.strokeStyle = withAlpha(colorB, 0.55);
-      ctx.lineWidth = Math.max(1, width / 540);
-      const step = width / 12;
-      const drift = (time * step * 0.25) % step;
-      ctx.beginPath();
-      for (let x = -step + drift; x <= width + step; x += step) {
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
-      }
-      for (let y = -step + drift; y <= height + step; y += step) {
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
-      }
-      ctx.stroke();
-      break;
-    }
-  }
-
-  // 低域に反応する床の波紋
-  if (project.effects.bassPulse > 0.01) {
-    const radius = width * (0.35 + bass * 0.35);
-    const floorY = height * project.timing.anchorY;
-    const glow = ctx.createRadialGradient(width / 2, floorY, 0, width / 2, floorY, radius);
-    glow.addColorStop(0, withAlpha(mix(colorA, '#ffffff', 0.6), 0.35 * project.effects.bassPulse * (0.4 + bass)));
-    glow.addColorStop(1, withAlpha(colorA, 0));
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.ellipse(width / 2, floorY, radius, radius * 0.22, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.restore();
-}
-
-/**
- * ビートごとに決定的な擬似乱数で粒子を生成する。
- * 時刻 t から一意に決まるので、シーク・再エクスポートしても同じ絵になる。
- */
-function drawParticles(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  project: Project,
-  analysis: AudioAnalysis | null,
-  time: number,
-): void {
-  if (!analysis || analysis.beats.length === 0) return;
-  const life = 1.1;
-  const perBeat = Math.round(4 + project.effects.particles * 14);
-  const accent = mix(project.background.colorA, '#ffffff', 0.75);
-
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  for (let i = analysis.beats.length - 1; i >= 0; i--) {
-    const beat = analysis.beats[i];
-    const age = time - beat.time;
-    if (age < 0) continue;
-    if (age > life) break;
-
-    const fade = 1 - age / life;
-    for (let k = 0; k < perBeat; k++) {
-      const rand = hash2(i, k);
-      const angle = rand * Math.PI * 2;
-      const speed = 0.25 + hash2(i, k + 97) * 0.7;
-      const distance = age * speed * height * 0.35;
-      const x = width / 2 + Math.cos(angle) * distance * 1.4;
-      const y = height * project.timing.anchorY - Math.sin(angle) * distance - age * height * 0.05;
-      const size = (2 + hash2(i, k + 311) * 6) * (width / 1080) * fade;
-      if (size <= 0) continue;
-      ctx.globalAlpha = fade * 0.6 * project.effects.particles;
-      ctx.fillStyle = accent;
-      ctx.beginPath();
-      ctx.arc(x, y, size, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-  ctx.restore();
-}
-
-/** 整数2つから 0..1 の決定的な擬似乱数を作る。 */
-function hash2(a: number, b: number): number {
-  let h = Math.imul(a + 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x165667b1, 0xc2b2ae35);
-  h ^= h >>> 15;
-  h = Math.imul(h, 0x2545f491);
-  h ^= h >>> 13;
-  return (h >>> 0) / 4294967296;
+  const gradient = ctx.createLinearGradient(0, 0, 0, height);
+  gradient.addColorStop(0, project.background.colorA);
+  gradient.addColorStop(1, project.background.colorB);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
 }
 
 function drawCaption(
@@ -354,7 +203,7 @@ function drawCaption(
   const blockHeight = lines.length * lineHeight;
   const centerY = height * caption.position + blockHeight / 2;
 
-  // 可読性のための帯（背景色に対して十分なコントラストを確保する）
+  // 可読性のための帯
   ctx.fillStyle = withAlpha(caption.backgroundColor, 0.55);
   const padding = fontSize * 0.4;
   ctx.fillRect(
@@ -406,10 +255,10 @@ function drawPlaceholder(
   message: string,
 ): void {
   ctx.save();
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-  ctx.fillRect(0, height / 2 - height * 0.06, width, height * 0.12);
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+  ctx.fillRect(0, height / 2 - height * 0.05, width, height * 0.1);
   ctx.fillStyle = '#ffffff';
-  ctx.font = `600 ${width * 0.04}px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+  ctx.font = `600 ${width * 0.042}px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(message, width / 2, height / 2);
@@ -428,4 +277,7 @@ export function effectiveRange(
   return { start: 0, end: 5 };
 }
 
-export type { CharacterAppearance };
+/** 出力解像度（書き出し用）。 */
+export function outputSize(project: Project): { width: number; height: number } {
+  return canvasSize(project.canvas.presetId);
+}
