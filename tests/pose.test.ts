@@ -10,7 +10,8 @@ import {
   type MotionFrame,
 } from '../src/lib/pose/types';
 import { buildRig, createDefaultAppearance } from '../src/lib/character/appearance';
-import { retarget, lowestPoint } from '../src/lib/character/retarget';
+import { buildBuiltinAvatar } from '../src/lib/character/builtinAvatar';
+import { applyPoseToAvatar } from '../src/lib/character/avatarRetarget';
 import { OneEuroFilter } from '../src/lib/pose/oneEuro';
 
 /**
@@ -237,68 +238,95 @@ describe('クリップの直列化とサンプリング', () => {
   });
 });
 
-describe('リターゲット（容姿とモーションの分離）', () => {
+describe('内蔵キャラクター（容姿とモーションの分離）', () => {
   const frame = () => mapLandmarksToRig(makeWorld(), null, 1080, 1920, 0)!;
 
-  it('骨の長さはリグ側の値になる（元人物の体格に依存しない）', () => {
-    const rig = buildRig(createDefaultAppearance());
-    const posed = retarget(frame(), rig);
+  const worldPos = (object: { matrixWorld: { elements: number[] } }) => ({
+    x: object.matrixWorld.elements[12],
+    y: object.matrixWorld.elements[13],
+    z: object.matrixWorld.elements[14],
+  });
+  const direction = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => {
+    const d = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
+    const len = Math.hypot(d.x, d.y, d.z) || 1;
+    return { x: d.x / len, y: d.y / len, z: d.z / len };
+  };
 
-    const distance = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) =>
-      Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
-
-    expect(distance(posed.points.hipL, posed.points.kneeL)).toBeCloseTo(rig.thigh, 6);
-    expect(distance(posed.points.kneeR, posed.points.ankleR)).toBeCloseTo(rig.shin, 6);
-    expect(distance(posed.points.shoulderR, posed.points.elbowR)).toBeCloseTo(rig.upperArm, 6);
-    expect(distance(posed.points.elbowL, posed.points.wristL)).toBeCloseTo(rig.foreArm, 6);
+  it('胴長が 1 に正規化され、内蔵キャラクターがヒューマノイドとして成立する', () => {
+    const rig = buildBuiltinAvatar(createDefaultAppearance());
+    expect(rig.unitScale).toBeCloseTo(1, 6);
+    expect(rig.bones.hips).toBeTruthy();
+    expect(rig.bones.leftLowerLeg).toBeTruthy();
+    expect(rig.facesBackward).toBe(false);
+    expect(rig.warnings).toEqual([]);
   });
 
   it('容姿を変えても関節の向き（＝動き）は変わらない', () => {
     const source = frame();
-    const slim = retarget(source, buildRig(createDefaultAppearance({ headScale: 0.85, legLength: 0.9, build: 'slim' })));
-    const heavy = retarget(
-      source,
-      buildRig(createDefaultAppearance({ headScale: 1.25, legLength: 1.18, build: 'curvy', limbThickness: 1.3 })),
+    const slim = buildBuiltinAvatar(
+      createDefaultAppearance({ headScale: 0.85, legLength: 0.9, build: 'slim', limbThickness: 0.8 }),
     );
-
-    const direction = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => {
-      const d = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
-      const len = Math.hypot(d.x, d.y, d.z);
-      return { x: d.x / len, y: d.y / len, z: d.z / len };
-    };
+    const heavy = buildBuiltinAvatar(
+      createDefaultAppearance({ headScale: 1.25, legLength: 1.18, build: 'curvy', limbThickness: 1.3 }),
+    );
+    for (const rig of [slim, heavy]) {
+      applyPoseToAvatar(rig, source, { flipFacing: false });
+      rig.root.updateMatrixWorld(true);
+    }
 
     for (const [from, to] of [
-      ['hipL', 'kneeL'],
-      ['kneeR', 'ankleR'],
-      ['shoulderL', 'elbowL'],
-      ['elbowR', 'wristR'],
-      ['chest', 'neck'],
+      ['leftUpperArm', 'leftLowerArm'],
+      ['leftLowerArm', 'leftHand'],
+      ['rightUpperLeg', 'rightLowerLeg'],
+      ['rightLowerLeg', 'rightFoot'],
+      ['spine', 'chest'],
     ] as const) {
-      const a = direction(slim.points[from], slim.points[to]);
-      const b = direction(heavy.points[from], heavy.points[to]);
-      expect(a.x).toBeCloseTo(b.x, 6);
-      expect(a.y).toBeCloseTo(b.y, 6);
-      expect(a.z).toBeCloseTo(b.z, 6);
+      const a = direction(worldPos(slim.bones[from]!), worldPos(slim.bones[to]!));
+      const b = direction(worldPos(heavy.bones[from]!), worldPos(heavy.bones[to]!));
+      expect(a.x).toBeCloseTo(b.x, 5);
+      expect(a.y).toBeCloseTo(b.y, 5);
+      expect(a.z).toBeCloseTo(b.z, 5);
     }
   });
 
-  it('関節が重なっていても既定方向にフォールバックして破綻しない', () => {
-    const source = frame();
-    // 膝と足首を完全に同じ位置にする
-    const knee = 12 * 3;
-    const ankle = 13 * 3;
-    for (let axis = 0; axis < 3; axis++) source.positions[ankle + axis] = source.positions[knee + axis];
-    const posed = retarget(source, buildRig(createDefaultAppearance()));
-    for (const point of Object.values(posed.points)) {
-      expect(Number.isFinite(point.x)).toBe(true);
-      expect(Number.isFinite(point.y)).toBe(true);
-      expect(Number.isFinite(point.z)).toBe(true);
-    }
+  it('容姿によって骨の長さは変わる（体型が反映される）', () => {
+    const short = buildBuiltinAvatar(createDefaultAppearance({ legLength: 0.85 }));
+    const tall = buildBuiltinAvatar(createDefaultAppearance({ legLength: 1.2 }));
+    const thighLength = (rig: ReturnType<typeof buildBuiltinAvatar>) => {
+      rig.root.updateMatrixWorld(true);
+      const a = worldPos(rig.bones.leftUpperLeg!);
+      const b = worldPos(rig.bones.leftLowerLeg!);
+      return Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+    };
+    expect(thighLength(tall)).toBeGreaterThan(thighLength(short));
   });
 
-  it('最下点は足元付近になる（地面合わせに使える）', () => {
-    const posed = retarget(frame(), buildRig(createDefaultAppearance()));
-    expect(lowestPoint(posed)).toBeLessThan(-1.5);
+  it('スキンメッシュにボーン重みが設定されている', () => {
+    const rig = buildBuiltinAvatar(createDefaultAppearance());
+    let skinned = 0;
+    rig.root.traverse((node) => {
+      const mesh = node as { isSkinnedMesh?: boolean; geometry?: { attributes: Record<string, { count: number; array: ArrayLike<number> }> } };
+      if (!mesh.isSkinnedMesh || !mesh.geometry) return;
+      skinned++;
+      const weight = mesh.geometry.attributes.skinWeight;
+      expect(weight).toBeTruthy();
+      expect(weight.count).toBeGreaterThan(100);
+      // 重みの合計が 1 になっていること（LBS が壊れない条件）
+      for (let i = 0; i < Math.min(weight.count, 200); i++) {
+        const sum =
+          weight.array[i * 4] + weight.array[i * 4 + 1] + weight.array[i * 4 + 2] + weight.array[i * 4 + 3];
+        expect(sum).toBeCloseTo(1, 4);
+      }
+    });
+    expect(skinned).toBe(1);
+  });
+
+  it('全ての服装・髪型で例外なく生成できる', () => {
+    for (const outfit of ['tshirt', 'hoodie', 'tanktop', 'dress', 'jacket'] as const) {
+      for (const hairStyle of ['short', 'bob', 'long', 'ponytail', 'bun'] as const) {
+        expect(() => buildBuiltinAvatar(createDefaultAppearance({ outfit, hairStyle }))).not.toThrow();
+      }
+    }
   });
 });
 

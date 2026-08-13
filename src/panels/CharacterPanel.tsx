@@ -322,8 +322,9 @@ function AvatarSection() {
     <section className="panel">
       <h2>3Dアバター</h2>
       <p className="panel-desc">
-        VRM / glTF のモデルを読み込むと、そのアバターがモーションで動きます。写真のような
-        リアルな見た目にしたい場合はこちらを使ってください。
+        <strong>省略できます。</strong>読み込まなければ内蔵キャラクターが使われ、
+        アプリ内の設定だけで体型・髪型・服装・肌の色を変えられます（追加費用なし）。
+        より作り込まれた見た目にしたい場合だけ、VRM / glTF のモデルを読み込んでください。
       </p>
 
       <label className="btn btn-primary btn-block" style={{ cursor: 'pointer' }}>

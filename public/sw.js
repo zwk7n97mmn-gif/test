@@ -51,7 +51,8 @@ self.addEventListener('message', (event) => {
 const isHeavyAsset = (pathname) =>
   pathname.includes('/models/') || pathname.includes('/mediapipe/') || pathname.endsWith('.task');
 
-const isImmutableAsset = (pathname) => pathname.includes('/assets/') || pathname.startsWith('/icons/');
+// サブパス配信（/repo/ 以下など）でも一致するよう includes で判定する
+const isImmutableAsset = (pathname) => pathname.includes('/assets/') || pathname.includes('/icons/');
 
 async function cacheFirst(request, cacheName) {
   const cache = await caches.open(cacheName);

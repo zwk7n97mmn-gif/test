@@ -1,10 +1,9 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { AudioAnalysis } from '../audio/types';
-import { applyPoseToAvatar, type AvatarRig } from '../character/avatarRetarget';
-import { buildRig, type CharacterAppearance } from '../character/appearance';
-import { Humanoid } from '../character/humanoid';
-import { retarget, lowestPoint } from '../character/retarget';
+import { applyPoseToAvatar, disposeAvatarRig, type AvatarRig } from '../character/avatarRetarget';
+import type { CharacterAppearance } from '../character/appearance';
+import { buildBuiltinAvatar, builtinStructureKey, updateBuiltinColors } from '../character/builtinAvatar';
 import type { MotionFrame } from '../pose/types';
 import type { Project } from '../project/types';
 
@@ -54,7 +53,8 @@ export class Stage {
   private readonly particlePositions: Float32Array;
   private readonly particleColors: Float32Array;
 
-  private humanoid: Humanoid | null = null;
+  /** 内蔵キャラクター（外部アバターと同じ AvatarRig 形式） */
+  private builtin: AvatarRig | null = null;
   private avatar: AvatarRig | null = null;
   private environment: THREE.Texture | null = null;
   private appearanceKey = '';
@@ -189,40 +189,23 @@ export class Stage {
 
     this.syncBackground(project);
     this.syncAvatar(update.avatar);
+    if (!update.avatar) this.syncBuiltin(project.appearance);
 
-    const rig = buildRig(project.appearance);
-    let totalHeight = rig.totalHeight;
+    // 外部アバターがあればそれを、無ければ内蔵キャラクターを動かす。
+    // どちらも同じ AvatarRig なので、以降の処理は完全に共通。
+    const character = this.avatar ?? this.builtin;
+    if (this.builtin) this.builtin.root.visible = !this.avatar && frame !== null;
+    if (this.avatar) this.avatar.root.visible = frame !== null;
 
-    if (this.avatar) {
-      // 外部アバターを使う場合、内蔵キャラクターは描かない
-      if (this.humanoid) this.humanoid.root.visible = false;
-      totalHeight = this.avatar.totalHeight;
-      this.avatar.root.visible = frame !== null;
-      if (frame) {
-        applyPoseToAvatar(this.avatar, frame, {
-          rootMotion: project.timing.rootMotion,
-          flipFacing: project.avatarFlipFacing ?? this.avatar.facesBackward,
-        });
-        this.groundAvatar(this.avatar);
-      }
-    } else {
-      this.syncAppearance(project.appearance);
-      const humanoid = this.humanoid;
-      if (humanoid) {
-        humanoid.root.visible = frame !== null;
-        if (frame) {
-          const skeleton = retarget(frame, rig);
-          humanoid.update(skeleton);
-          // 足裏が地面に接するように全体を持ち上げる
-          const lift = -lowestPoint(skeleton) + rig.foot * 0.12;
-          const travel = project.timing.rootMotion;
-          humanoid.root.position.set(
-            frame.root.x * travel * 0.5,
-            lift + Math.max(0, frame.root.y * travel * 0.25),
-            0,
-          );
-        }
-      }
+    const totalHeight = character?.totalHeight ?? 4;
+    if (character && frame) {
+      applyPoseToAvatar(character, frame, {
+        rootMotion: project.timing.rootMotion,
+        flipFacing: this.avatar
+          ? (project.avatarFlipFacing ?? this.avatar.facesBackward)
+          : character.facesBackward,
+      });
+      this.groundAvatar(character);
     }
 
     this.updateCamera(project, totalHeight, beat, frame);
@@ -234,7 +217,7 @@ export class Stage {
   dispose(): void {
     this.canvas.removeEventListener('webglcontextlost', this.onContextLost);
     this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
-    this.humanoid?.dispose();
+    if (this.builtin) disposeAvatarRig(this.builtin);
     this.backgroundTexture?.dispose();
     this.environment?.dispose();
     this.ground.geometry.dispose();
@@ -264,10 +247,28 @@ export class Stage {
     if (this.avatar === avatar) return;
     if (this.avatar) this.scene.remove(this.avatar.root);
     this.avatar = avatar;
-    if (avatar) {
-      this.scene.add(avatar.root);
-      if (this.humanoid) this.humanoid.root.visible = false;
+    if (avatar) this.scene.add(avatar.root);
+  }
+
+  /**
+   * 内蔵キャラクターを容姿に合わせて作り直す。
+   * スキンメッシュの形状が容姿に依存するため、変更時はジオメトリごと再生成する。
+   */
+  private syncBuiltin(appearance: CharacterAppearance): void {
+    const key = builtinStructureKey(appearance);
+    if (key === this.appearanceKey && this.builtin) {
+      // 形状が同じなら色だけ差し替える（スライダー操作中もフレーム落ちしない）
+      updateBuiltinColors(this.builtin, appearance);
+      return;
     }
+    this.appearanceKey = key;
+    if (this.builtin) {
+      this.scene.remove(this.builtin.root);
+      disposeAvatarRig(this.builtin);
+    }
+    this.builtin = buildBuiltinAvatar(appearance);
+    updateBuiltinColors(this.builtin, appearance);
+    this.scene.add(this.builtin.root);
   }
 
   /** ポーズ適用後に、最も低い足が地面に接するよう全体を上下させる。 */
@@ -284,18 +285,6 @@ export class Stage {
       // 足首ボーンは足裏より少し上にあるため、その分だけ余分に下げない
       avatar.root.position.y = -lowest + avatar.totalHeight * 0.02;
       avatar.root.updateMatrixWorld(true);
-    }
-  }
-
-  private syncAppearance(appearance: CharacterAppearance): void {
-    const key = JSON.stringify(appearance);
-    if (key === this.appearanceKey && this.humanoid) return;
-    this.appearanceKey = key;
-    if (!this.humanoid) {
-      this.humanoid = new Humanoid(appearance);
-      this.scene.add(this.humanoid.root);
-    } else {
-      this.humanoid.applyAppearance(appearance);
     }
   }
 

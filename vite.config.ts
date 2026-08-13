@@ -1,7 +1,12 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
+// GitHub Pages のようなサブパス配信に対応するため、ベースパスを環境変数で切り替える。
+// 例) BASE_PATH=/my-repo/ npm run build
+const base = process.env.BASE_PATH ?? '/';
+
 export default defineConfig({
+  base,
   plugins: [react()],
   server: {
     headers: {
