@@ -162,7 +162,8 @@ function prepareForRendering(root: THREE.Object3D): void {
     const mesh = node as THREE.Mesh;
     if (!mesh.isMesh) return;
     mesh.castShadow = true;
-    mesh.receiveShadow = false;
+    // 自分自身にも影を落とす（顎の下・腕と胴の間などの陰影が出て立体感が増す）
+    mesh.receiveShadow = true;
     mesh.frustumCulled = false;
 
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];

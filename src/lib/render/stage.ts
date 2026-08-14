@@ -38,6 +38,10 @@ const MAX_PARTICLES = 260;
  * WebGL コンテキストはモバイルで枚数制限が厳しいため、アプリ全体で 1 つを共有し、
  * プレビューと書き出しで使い回す（`getStage()`）。
  */
+/** 影の中が潰れないようにするための、環境光の下限色。 */
+const SKY_FILL = new THREE.Color('#e6ecff');
+const GROUND_FILL = new THREE.Color('#7d7594');
+
 export class Stage {
   readonly renderer: THREE.WebGLRenderer;
   readonly canvas: HTMLCanvasElement;
@@ -90,24 +94,32 @@ export class Stage {
     this.canvas.addEventListener('webglcontextrestored', this.onContextRestored);
 
     // --- ライティング（キー / リム / 環境の3灯） ---------------------------
-    this.ambient = new THREE.HemisphereLight(0xdfe7ff, 0x2b2436, 0.85);
+    // 環境光を強くしすぎると影が塗りつぶされるため、控えめにする
+    this.ambient = new THREE.HemisphereLight(0xdfe7ff, 0x2b2436, 0.58);
     this.scene.add(this.ambient);
 
-    this.keyLight = new THREE.DirectionalLight(0xffffff, 2.1);
-    this.keyLight.position.set(2.2, 5.2, 4.0);
+    this.keyLight = new THREE.DirectionalLight(0xffffff, 2.6);
+    // 真正面から当てると体の起伏が出ないので、斜め上から当てる
+    this.keyLight.position.set(3.4, 5.2, 3.0);
     this.keyLight.castShadow = true;
-    this.keyLight.shadow.mapSize.set(1024, 1024);
+    // 体の自己遮蔽まで拾うため、地面に落とすだけだった頃より解像度を上げる
+    this.keyLight.shadow.mapSize.set(2048, 2048);
     this.keyLight.shadow.camera.near = 1;
     this.keyLight.shadow.camera.far = 20;
-    this.keyLight.shadow.camera.left = -3;
-    this.keyLight.shadow.camera.right = 3;
+    // 影用カメラは人物にぴったり寄せる。広いほど 1 テクセルが粗くなり、
+    // 顔に落ちる前髪の影がギザギザになる。腕を伸ばした分の余裕だけ残す。
+    this.keyLight.shadow.camera.left = -2.6;
+    this.keyLight.shadow.camera.right = 2.6;
     this.keyLight.shadow.camera.top = 6;
-    this.keyLight.shadow.camera.bottom = -1;
-    this.keyLight.shadow.bias = -0.0018;
+    this.keyLight.shadow.camera.bottom = -0.4;
+    this.keyLight.shadow.bias = -0.0004;
+    // 曲面のセルフシャドウで縞（shadow acne）が出ないよう、法線方向にずらす。
+    // 手足の半径が 0.1 前後なので、大きくしすぎると体の陰影ごと消えてしまう。
+    this.keyLight.shadow.normalBias = 0.006;
     this.scene.add(this.keyLight);
     this.scene.add(this.keyLight.target);
 
-    this.rimLight = new THREE.DirectionalLight(0xbcd4ff, 1.5);
+    this.rimLight = new THREE.DirectionalLight(0xbcd4ff, 0.9);
     this.rimLight.position.set(-3.2, 3.4, -4.2);
     this.scene.add(this.rimLight);
 
@@ -118,7 +130,7 @@ export class Stage {
       const pmrem = new THREE.PMREMGenerator(this.renderer);
       this.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
       this.scene.environment = this.environment;
-      this.scene.environmentIntensity = 0.55;
+      this.scene.environmentIntensity = 0.5;
       pmrem.dispose();
     } catch {
       // 環境マップが作れない環境でも、3灯だけで描画は成立する
@@ -341,9 +353,11 @@ export class Stage {
     this.backgroundTexture.colorSpace = THREE.SRGBColorSpace;
     this.scene.background = this.backgroundTexture;
 
-    // 環境光を背景色になじませる
-    this.ambient.color.set(background.colorA);
-    this.ambient.groundColor.set(background.colorB);
+    // 環境光を背景色になじませる。
+    // ただし背景をそのまま使うと、暗い背景のときに影の中が真っ黒に潰れてしまう。
+    // 色みだけを borrow して明るさは持ち上げる。
+    this.ambient.color.set(background.colorA).lerp(SKY_FILL, 0.55);
+    this.ambient.groundColor.set(background.colorB).lerp(GROUND_FILL, 0.6);
   }
 
   private updateCamera(project: Project, totalHeight: number, beat: number, frame: MotionFrame | null): void {
@@ -370,8 +384,8 @@ export class Stage {
     bass: number,
     totalHeight: number,
   ): void {
-    this.keyLight.intensity = 2.1 + beat * project.background.beatReactivity * 1.5;
-    this.rimLight.intensity = 1.5 + beat * project.background.beatReactivity * 1.1;
+    this.keyLight.intensity = 2.6 + beat * project.background.beatReactivity * 1.5;
+    this.rimLight.intensity = 0.9 + beat * project.background.beatReactivity * 1.1;
 
     // 床の光
     const glowMaterial = this.floorGlow.material as THREE.MeshBasicMaterial;

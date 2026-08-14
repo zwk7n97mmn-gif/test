@@ -20,7 +20,12 @@ import {
   createIdolAppearance,
   type CharacterAppearance,
 } from '../src/lib/character/appearance';
-import { buildBuiltinAvatar, builtinStructureKey } from '../src/lib/character/builtinAvatar';
+import {
+  HEAD_PROFILES,
+  buildBuiltinAvatar,
+  builtinStructureKey,
+  headContourRadius,
+} from '../src/lib/character/builtinAvatar';
 import { applyPoseToAvatar } from '../src/lib/character/avatarRetarget';
 import { OneEuroFilter } from '../src/lib/pose/oneEuro';
 
@@ -431,5 +436,48 @@ describe('リグの導出', () => {
     const short = buildRig(createDefaultAppearance({ legLength: 0.85 }));
     const tall = buildRig(createDefaultAppearance({ legLength: 1.2 }));
     expect(tall.totalHeight).toBeGreaterThan(short.totalHeight);
+  });
+});
+
+describe('頭の輪郭と陰影', () => {
+  it('頬の丸みを保ったまま、顎に向かって細くなる', () => {
+    for (const faceStyle of FACE_STYLES) {
+      const max = Math.max(
+        ...HEAD_PROFILES[faceStyle].map(([, radius]) => radius),
+      );
+      // 頬骨の高さ（顔の中心付近）では、ほぼ最大幅のまま = 丸みが残っている
+      expect(headContourRadius(faceStyle, 0)).toBeGreaterThan(max * 0.95);
+      // 顎の高さでは明確に細い = 輪郭がシャープ
+      expect(headContourRadius(faceStyle, -0.6)).toBeLessThan(max * 0.8);
+      expect(headContourRadius(faceStyle, -0.85)).toBeLessThan(max * 0.52);
+      // 輪郭は上下端で閉じている（Lathe が破綻しない条件）
+      const profile = HEAD_PROFILES[faceStyle];
+      expect(profile[0][1]).toBe(0);
+      expect(profile[profile.length - 1][1]).toBe(0);
+    }
+  });
+
+  it('顎は頬より細い（アニメ調のほうがより細い）', () => {
+    expect(headContourRadius('anime', -0.7)).toBeLessThan(headContourRadius('natural', -0.7));
+  });
+
+  it('輪郭の定義域外は端の値に丸められる', () => {
+    expect(headContourRadius('natural', -99)).toBe(0);
+    expect(headContourRadius('natural', 99)).toBe(0);
+  });
+
+  it('全てのメッシュが影を落とし、かつ影を受ける', () => {
+    // 「影が付かない」不具合の再発防止。receiveShadow を false にすると
+    // 顎下・前髪・スカートの陰影が一切出なくなる。
+    const rig = buildBuiltinAvatar(createIdolAppearance());
+    let meshes = 0;
+    rig.root.traverse((node) => {
+      const mesh = node as { isMesh?: boolean; castShadow: boolean; receiveShadow: boolean };
+      if (!mesh.isMesh) return;
+      meshes++;
+      expect(mesh.castShadow).toBe(true);
+      expect(mesh.receiveShadow).toBe(true);
+    });
+    expect(meshes).toBeGreaterThan(5);
   });
 });

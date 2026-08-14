@@ -40,9 +40,12 @@ export function buildBuiltinAvatar(appearance: CharacterAppearance): AvatarRig {
   // 手袋のある衣装では手も手袋の色にする（袖だけ色が違うと切れて見える）
   const handMaterial = appearance.outfit === 'idol' ? materials.accent : materials.skin;
   for (const side of ['left', 'right'] as const) {
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(rig.armRadius * 1.05, 14, 10), handMaterial);
-    hand.scale.set(1, 1.15, 0.75);
-    hand.position.y = 0;
+    // レストポーズでは腕が ±X に伸びているので、手も同じ向きに伸ばす。
+    // 球のままだと手首に玉が付いているように見えてしまう。
+    const dir = side === 'left' ? 1 : -1;
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(rig.armRadius * 0.72, 16, 12), handMaterial);
+    hand.scale.set(1.75, 1.15, 0.62);
+    hand.position.set(dir * rig.armRadius * 0.85, 0, 0);
     bones[`${side}Hand` as 'leftHand'].add(hand);
 
     const shoe = new THREE.Mesh(new THREE.CapsuleGeometry(rig.legRadius * 0.72, rig.foot * 0.6, 4, 12), materials.shoe);
@@ -65,7 +68,8 @@ export function buildBuiltinAvatar(appearance: CharacterAppearance): AvatarRig {
     const mesh = node as THREE.Mesh;
     if (mesh.isMesh) {
       mesh.castShadow = true;
-      mesh.receiveShadow = false;
+      // 自分自身にも影を落とす（顎の下・腕と胴の間などの陰影が出て立体感が増す）
+      mesh.receiveShadow = true;
       mesh.frustumCulled = false;
     }
   });
@@ -173,7 +177,7 @@ function emitTube(
     capEnd?: boolean;
   },
 ): void {
-  const radial = 14;
+  const radial = 24;
   const depthScale = options.depthScale ?? 1;
   const segmentLengths = points.slice(0, -1).map((p, i) => p.distanceTo(points[i + 1]));
   const total = segmentLengths.reduce((a, b) => a + b, 0);
@@ -329,7 +333,7 @@ function buildBodyMesh(
 
   const torsoMaterial = torsoMaterialFn(appearance);
   emitTube(builder, [hips.clone().setY(hips.y - rig.hipToSpine * 0.45), spine, chest, torsoTop], [index.hips, index.spine, index.chest, index.chest], {
-    steps: 5,
+    steps: 7,
     depthScale: rig.torsoDepth,
     radius: (t) => {
       // 腰 → くびれ → 胸 → 肩口 の曲線
@@ -371,15 +375,19 @@ function buildBodyMesh(
       [worldOf(upperArm), worldOf(lowerArm), worldOf(hand)],
       [index[upperArm], index[lowerArm], index[hand]],
       {
-        steps: 5,
+        steps: 7,
         blend: rig.upperArm * 0.3,
+        // 肩（三角筋）→ 肘の手前でくびれ → 肘 → 前腕のふくらみ → 細い手首
         radius: (t) =>
           rig.armRadius * sampleProfile([
-            [0, 1.3],
-            [0.2, 1.0],
-            [0.5, 0.92],
-            [0.78, 0.8],
-            [1, 0.66],
+            [0, 1.34],
+            [0.12, 1.1],
+            [0.3, 0.96],
+            [0.46, 0.84],
+            [0.56, 0.9],
+            [0.68, 0.84],
+            [0.86, 0.64],
+            [1, 0.55],
           ], t),
         material: sleeve,
         capStart: true,
@@ -395,15 +403,19 @@ function buildBodyMesh(
       [worldOf(upperLeg), worldOf(lowerLeg), worldOf(foot)],
       [index[upperLeg], index[lowerLeg], index[foot]],
       {
-        steps: 6,
+        steps: 8,
         blend: rig.thigh * 0.26,
+        // 腿の付け根 → 膝の手前でくびれ → 膝 → ふくらはぎのふくらみ → 細い足首
         radius: (t) =>
           rig.legRadius * sampleProfile([
-            [0, 1.25],
-            [0.22, 1.05],
-            [0.5, 0.82],
-            [0.72, 0.78],
-            [1, 0.5],
+            [0, 1.3],
+            [0.16, 1.14],
+            [0.36, 0.95],
+            [0.5, 0.8],
+            [0.62, 0.95],
+            [0.76, 0.78],
+            [0.92, 0.46],
+            [1, 0.42],
           ], t),
         material: legwear,
         capStart: true,
@@ -426,6 +438,33 @@ function buildBodyMesh(
   const mesh = new THREE.SkinnedMesh(geometry);
   mesh.name = 'Body';
   return { mesh };
+}
+
+/**
+ * 頭の輪郭半径（頭半径 R = 1 とした比）。dy は頭の中心からの高さ。
+ * 顎の絞り具合と頬の丸みを外から検証できるように公開している。
+ */
+export function headContourRadius(faceStyle: CharacterAppearance['faceStyle'], dy: number): number {
+  return sampleCurve(HEAD_PROFILES[faceStyle], dy);
+}
+
+/**
+ * 制御点 [(x, 値)] を線形補間して読む。定義域は制御点そのものの範囲。
+ * `sampleProfile` は 0〜1 に丸めてしまうので、負の位置も扱う輪郭にはこちらを使う。
+ */
+function sampleCurve(curve: ReadonlyArray<readonly [number, number]>, x: number): number {
+  if (x <= curve[0][0]) return curve[0][1];
+  const last = curve[curve.length - 1];
+  if (x >= last[0]) return last[1];
+  for (let i = 0; i < curve.length - 1; i++) {
+    const [x0, v0] = curve[i];
+    const [x1, v1] = curve[i + 1];
+    if (x <= x1) {
+      const u = x1 - x0 < 1e-9 ? 0 : (x - x0) / (x1 - x0);
+      return v0 + (v1 - v0) * u;
+    }
+  }
+  return last[1];
 }
 
 /** 制御点 [(t, 値)] を線形補間して読む。 */
@@ -553,8 +592,6 @@ function createMaterials(a: CharacterAppearance): Materials {
  * 定型があり、そこだけを差し替えれば同じ組み立て手順を使い回せる。
  */
 interface FaceMetrics {
-  jawScale: readonly [number, number, number];
-  jawDy: number;
   eyeDx: number;
   eyeDy: number;
   /** 顔の曲面に沿わせるための、目の外向き回転（ラジアン） */
@@ -587,8 +624,6 @@ interface FaceMetrics {
 
 const FACE_METRICS: Record<CharacterAppearance['faceStyle'], FaceMetrics> = {
   natural: {
-    jawScale: [0.92, 0.86, 0.98],
-    jawDy: -0.42,
     eyeDx: 0.36,
     eyeDy: 0.04,
     eyeYaw: 0.18,
@@ -613,8 +648,6 @@ const FACE_METRICS: Record<CharacterAppearance['faceStyle'], FaceMetrics> = {
     outerLash: 0,
   },
   anime: {
-    jawScale: [0.7, 0.82, 0.86],
-    jawDy: -0.42,
     eyeDx: 0.39,
     eyeDy: -0.16,
     // 平たい目を丸い頭に乗せるので、外側へ倒して曲面に沿わせる
@@ -641,6 +674,54 @@ const FACE_METRICS: Record<CharacterAppearance['faceStyle'], FaceMetrics> = {
   },
 };
 
+/**
+ * 頭の輪郭（高さ → 半径）。単位は頭半径 R、原点は頭の中心。
+ *
+ * 球を複数重ねて顎を作ると必ず交線が「二重顎」の折れ目として出るため、
+ * 輪郭そのものを 1 本の曲線として持ち、回転体（Lathe）として生成する。
+ * こうすると「頬は丸いまま、顎先だけを尖らせる」といった調整が
+ * 折れ目を作らずにできる。
+ */
+type HeadProfile = ReadonlyArray<readonly [number, number]>;
+
+export const HEAD_PROFILES: Record<CharacterAppearance['faceStyle'], HeadProfile> = {
+  // 人のシルエットに近い卵形
+  natural: [
+    [-1.02, 0.0],
+    [-0.98, 0.16],
+    [-0.92, 0.3],
+    [-0.82, 0.45],
+    [-0.66, 0.62],
+    [-0.46, 0.76],
+    [-0.26, 0.855],
+    [-0.06, 0.895],
+    [0.2, 0.9],
+    [0.46, 0.865],
+    [0.72, 0.75],
+    [0.92, 0.49],
+    [1.06, 0.0],
+  ],
+  // 頬の丸みは残したまま、顎の下だけを速く絞る
+  anime: [
+    [-1.0, 0.0],
+    [-0.96, 0.13],
+    [-0.9, 0.26],
+    [-0.8, 0.4],
+    [-0.64, 0.58],
+    [-0.44, 0.74],
+    [-0.24, 0.85],
+    [-0.04, 0.898],
+    [0.2, 0.9],
+    [0.46, 0.86],
+    [0.72, 0.74],
+    [0.92, 0.48],
+    [1.06, 0.0],
+  ],
+};
+
+/** 頭の奥行き / 幅の比。1 より大きいと前後に長い（人の頭に近い）。 */
+const HEAD_DEPTH = 1.05;
+
 /** 頭（頭蓋・顔・髪）。head ボーンにぶら下げる剛体グループ。 */
 function buildHead(a: CharacterAppearance, rig: CharacterRig, m: Materials): THREE.Group {
   const R = rig.headRadius;
@@ -650,30 +731,27 @@ function buildHead(a: CharacterAppearance, rig: CharacterRig, m: Materials): THR
 
   // head ボーンは両耳の中点＝頭のほぼ中心に来るため、頭蓋はその近くに置く
   const skullY = R * 0.15;
-  const rx = R * 0.9;
-  const ry = R * 1.06;
-  const rz = R * 0.95;
+  const profile = HEAD_PROFILES[a.faceStyle];
 
-  const skull = new THREE.Mesh(new THREE.SphereGeometry(R, 28, 20), m.skin);
-  skull.scale.set(0.9, 1.06, 0.95);
+  /** その高さでの輪郭半径。 */
+  const radiusAt = (dy: number): number => sampleCurve(profile, dy / R) * R;
+
+  const skull = new THREE.Mesh(buildSkullGeometry(profile, R), m.skin);
   skull.position.y = skullY;
+  skull.scale.z = HEAD_DEPTH;
   group.add(skull);
 
-  /** 頭蓋（楕円体）表面の Z 座標。顔のパーツはこの上に置く。 */
+  /** 頭の表面の Z 座標。顔のパーツはこの上に置く。dy は skullY からの高さ。 */
   const surfaceZ = (dx: number, dy: number): number => {
-    const k = 1 - (dx / rx) ** 2 - (dy / ry) ** 2;
-    return k > 0 ? rz * Math.sqrt(k) : 0;
+    const r = radiusAt(dy);
+    const k = r * r - dx * dx;
+    return k > 0 ? Math.sqrt(k) * HEAD_DEPTH : 0;
   };
 
-  const jaw = new THREE.Mesh(new THREE.SphereGeometry(R * 0.72, 20, 14), m.skin);
-  jaw.scale.set(...f.jawScale);
-  jaw.position.set(0, skullY + R * f.jawDy, R * 0.06);
-  group.add(jaw);
-
   for (const sign of [-1, 1]) {
-    const ear = new THREE.Mesh(new THREE.SphereGeometry(R * 0.2, 10, 8), m.skin);
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(R * 0.2, 12, 10), m.skin);
     ear.scale.set(0.4, 1, 0.75);
-    ear.position.set(sign * rx * 0.97, skullY - R * 0.02, -R * 0.02);
+    ear.position.set(sign * radiusAt(-R * 0.02) * 0.97, skullY - R * 0.02, -R * 0.02);
     group.add(ear);
   }
 
@@ -813,6 +891,21 @@ function buildHead(a: CharacterAppearance, rig: CharacterRig, m: Materials): THR
     group.add(accessory);
   }
   return group;
+}
+
+/** 輪郭プロファイルを回転させて頭の形を作る。 */
+function buildSkullGeometry(profile: HeadProfile, R: number): THREE.LatheGeometry {
+  const steps = 40;
+  const from = profile[0][0];
+  const to = profile[profile.length - 1][0];
+  const points: THREE.Vector2[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const y = from + ((to - from) * i) / steps;
+    // Lathe は半径 0 の点が連続すると法線が壊れるので、極はわずかに残す
+    const radius = Math.max(sampleCurve(profile, y) * R, 1e-4);
+    points.push(new THREE.Vector2(radius, y * R));
+  }
+  return new THREE.LatheGeometry(points, 32);
 }
 
 /** 星形（尖った点が points 個）の平面シェイプ。 */
@@ -996,7 +1089,7 @@ function buildHair(
       const tipY = Math.abs(i) === 2 ? R * 0.02 : R * (0.14 + Math.abs(i) * 0.06);
       const tip = point(dx * (Math.abs(i) === 2 ? 1.3 : 1.06), tipY, 1.12);
       // 根元は頭蓋の内側に埋めておく。表に出すと切り口が冠部の凹凸として見える。
-      const root = point(dx * 0.7, R * 0.8, 0.85);
+      const root = point(dx * 0.7, R * 0.76, 0.72);
       const axis = tip.clone().sub(root);
       const length = axis.length();
       if (length < 1e-4) continue;
@@ -1042,11 +1135,13 @@ function buildHair(
     }
     case 'long': {
       const length = R * 3.4;
+      // 長い房は頭に固定されているため、頭が前へ傾くと毛先が大きく前に出る。
+      // 胴へ食い込ませないよう、根元から後方（-Z）へ十分に逃がしておく。
       const back = strand({
-        radius: R * 0.62,
-        length: length * 0.98,
-        position: [0, skullY - length * 0.4, -R * 0.75],
-        scale: [1.5, 1, 0.6],
+        radius: R * 0.6,
+        length: length * 0.94,
+        position: [0, skullY - length * 0.4, -R * 1.0],
+        scale: [1.5, 1, 0.55],
       });
       hair.add(back);
       addSideLocks(R * 2.1, R * 0.15);
@@ -1056,10 +1151,10 @@ function buildHair(
       // 背中の直毛 + 顎の高さで切りそろえた左右の毛束
       hair.add(
         strand({
-          radius: R * 0.66,
-          length: R * 4.2,
-          position: [0, skullY - R * 1.9, -R * 0.7],
-          scale: [1.45, 1, 0.55],
+          radius: R * 0.6,
+          length: R * 3.6,
+          position: [0, skullY - R * 1.7, -R * 1.05],
+          scale: [1.45, 1, 0.5],
         }),
       );
       // 顎の高さで切りそろえた毛束は根元の色のまま（毛先だけ色が変わると不自然）
