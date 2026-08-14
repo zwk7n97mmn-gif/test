@@ -505,6 +505,10 @@ interface Materials {
   sclera: THREE.MeshStandardMaterial;
   dark: THREE.MeshStandardMaterial;
   mouth: THREE.MeshStandardMaterial;
+  /** 頬の赤み。アニメ調のときだけ使う。 */
+  blush: THREE.MeshStandardMaterial;
+  /** 虹彩の下側を明るくして、瞳にグラデーションを作る。 */
+  eyeGlow: THREE.MeshStandardMaterial;
   accent: THREE.MeshStandardMaterial;
   inner: THREE.MeshStandardMaterial;
   /** 瞳のハイライトや花びらなど、光って見せたい白。 */
@@ -527,6 +531,8 @@ function createMaterials(a: CharacterAppearance): Materials {
     sclera: make('#f8f6f6', 0.3),
     dark: make('#14100e', 0.4),
     mouth: make(mouthColor(a.skinTone), 0.55),
+    blush: make(mix(a.skinTone, '#e2607f', 0.45), 0.9),
+    eyeGlow: make(mix(a.eyeColor, '#ffffff', 0.42), 0.22),
     accent: make(a.accentColor, 0.7),
     inner: make(a.innerColor, 0.85),
     highlight: new THREE.MeshStandardMaterial({
@@ -571,6 +577,12 @@ interface FaceMetrics {
   mouthW: number;
   mouthH: number;
   mouthDy: number;
+  /** 頬の赤みの大きさ（R 比）。0 で描かない。 */
+  blushR: number;
+  /** 口を開いた形（歌っている口）にするか */
+  mouthOpen: boolean;
+  /** 目尻のまつげの長さ（白目半径比）。0 で描かない。 */
+  outerLash: number;
 }
 
 const FACE_METRICS: Record<CharacterAppearance['faceStyle'], FaceMetrics> = {
@@ -596,6 +608,9 @@ const FACE_METRICS: Record<CharacterAppearance['faceStyle'], FaceMetrics> = {
     mouthW: 0.28,
     mouthH: 0.075,
     mouthDy: -0.36,
+    blushR: 0,
+    mouthOpen: false,
+    outerLash: 0,
   },
   anime: {
     jawScale: [0.7, 0.82, 0.86],
@@ -617,9 +632,12 @@ const FACE_METRICS: Record<CharacterAppearance['faceStyle'], FaceMetrics> = {
     browDy: 0.13,
     noseR: 0.05,
     noseDy: -0.3,
-    mouthW: 0.19,
-    mouthH: 0.075,
-    mouthDy: -0.44,
+    mouthW: 0.22,
+    mouthH: 0.15,
+    mouthDy: -0.42,
+    blushR: 0.19,
+    mouthOpen: true,
+    outerLash: 0.42,
   },
 };
 
@@ -686,6 +704,13 @@ function buildHead(a: CharacterAppearance, rig: CharacterRig, m: Materials): THR
     iris.position.z = front + step * 2;
     iris.scale.y = irisScaleY;
     eye.add(iris);
+
+    // 虹彩の下半分を明るくする（アニメの瞳は下側が光っていることが多い）
+    const glow = new THREE.Mesh(new THREE.CircleGeometry(irisR * 0.62, 20), m.eyeGlow);
+    glow.position.set(0, -irisR * 0.3 * irisScaleY, front + step * 2.5);
+    glow.scale.y = irisScaleY * 0.9;
+    eye.add(glow);
+
     const pupil = new THREE.Mesh(new THREE.CircleGeometry(R * f.pupilR, 18), m.dark);
     pupil.position.z = front + step * 3;
     pupil.scale.y = irisScaleY * 1.05;
@@ -712,7 +737,35 @@ function buildHead(a: CharacterAppearance, rig: CharacterRig, m: Materials): THR
     lash.scale.y = f.scleraScaleY;
     eye.add(lash);
 
+    // 目尻のまつげ。跳ね上げると一気にアニメらしい目元になる。
+    if (f.outerLash > 0) {
+      const length = scleraRadius * f.outerLash;
+      const outer = new THREE.Mesh(new THREE.ConeGeometry(scleraRadius * 0.14, length, 6), m.dark);
+      outer.position.set(
+        sign * scleraRadius * 0.94,
+        scleraRadius * f.scleraScaleY * 0.62,
+        front + step * 5,
+      );
+      // 外側かつ上向きに倒す（sign は左右で符号が変わる）
+      outer.rotation.z = sign * -0.85;
+      outer.scale.z = 0.4;
+      eye.add(outer);
+    }
+
     group.add(eye);
+  }
+
+  // 頬の赤み
+  if (f.blushR > 0) {
+    const blushDx = R * (f.eyeDx + 0.24);
+    const blushDy = R * (f.eyeDy - 0.28);
+    for (const sign of [-1, 1]) {
+      const blush = new THREE.Mesh(new THREE.CircleGeometry(R * f.blushR, 20), m.blush);
+      blush.position.set(sign * blushDx, skullY + blushDy, surfaceZ(blushDx, blushDy) + R * 0.01);
+      blush.scale.y = 0.62;
+      blush.rotation.y = sign * 0.5;
+      group.add(blush);
+    }
   }
 
   const browDy = R * f.browDy;
@@ -732,10 +785,25 @@ function buildHead(a: CharacterAppearance, rig: CharacterRig, m: Materials): THR
   // 口は頭蓋の表面に「貼る」。箱を表面上に置くと半分が埋まって見えなくなるので、
   // 平面ディスクを surfaceZ より前に出す。
   const mouthDy = R * f.mouthDy;
-  const mouth = new THREE.Mesh(new THREE.CircleGeometry(R * f.mouthW * 0.5, 20), m.mouth);
-  mouth.scale.y = f.mouthH / f.mouthW;
-  mouth.position.set(0, skullY + mouthDy, surfaceZ(0, mouthDy) + R * 0.012);
-  group.add(mouth);
+  const mouthR = R * f.mouthW * 0.5;
+  const mouthZ = surfaceZ(0, mouthDy) + R * 0.012;
+  if (f.mouthOpen) {
+    // 歌っている口。円の下半分だけを使うと、口角の上がった開いた口になる。
+    const mouth = new THREE.Mesh(new THREE.CircleGeometry(mouthR, 24, Math.PI, Math.PI), m.mouth);
+    mouth.scale.y = (f.mouthH / f.mouthW) * 2;
+    mouth.position.set(0, skullY + mouthDy, mouthZ);
+    group.add(mouth);
+
+    // 上の歯。開いた口の上辺に薄く入れると立体感が出る。
+    const teeth = new THREE.Mesh(new THREE.BoxGeometry(mouthR * 1.72, mouthR * 0.2, R * 0.01), m.sclera);
+    teeth.position.set(0, skullY + mouthDy - mouthR * 0.1, mouthZ + R * 0.004);
+    group.add(teeth);
+  } else {
+    const mouth = new THREE.Mesh(new THREE.CircleGeometry(mouthR, 20), m.mouth);
+    mouth.scale.y = f.mouthH / f.mouthW;
+    mouth.position.set(0, skullY + mouthDy, mouthZ);
+    group.add(mouth);
+  }
 
   group.add(buildHair(a, R, m, skullY, surfaceZ));
   const accessory = buildHairAccessory(a, R, m);
@@ -924,7 +992,9 @@ function buildHair(
     for (let i = -2; i <= 2; i++) {
       const dx = i * R * 0.26;
       // 眉（skullY + browDy）に掛からない高さで止める
-      const tip = point(dx * 1.06, R * (0.16 + Math.abs(i) * 0.05), 1.12);
+      // 外側の一束だけ長く垂らすと、のっぺりした「ヘルメット」に見えなくなる
+      const tipY = Math.abs(i) === 2 ? R * 0.02 : R * (0.14 + Math.abs(i) * 0.06);
+      const tip = point(dx * (Math.abs(i) === 2 ? 1.3 : 1.06), tipY, 1.12);
       // 根元は頭蓋の内側に埋めておく。表に出すと切り口が冠部の凹凸として見える。
       const root = point(dx * 0.7, R * 0.8, 0.85);
       const axis = tip.clone().sub(root);
@@ -1021,8 +1091,8 @@ function buildHair(
         hair.add(
           strand({
             radius: R * 0.27,
-            length: R * 3.0,
-            position: [sign * R * 1.12, skullY - R * 1.0, -R * 1.0],
+            length: R * 3.6,
+            position: [sign * R * 1.12, skullY - R * 1.3, -R * 1.0],
             rotation: [-0.12, 0, sign * 0.22],
             scale: [1, 1, 0.9],
           }),
@@ -1210,6 +1280,8 @@ export function updateBuiltinColors(rig: AvatarRig, a: CharacterAppearance): voi
   m.shoe.color.set(a.shoeColor);
   m.eye.color.set(a.eyeColor);
   m.eyeRim.color.set(shade(a.eyeColor, -0.3));
+  m.eyeGlow.color.set(mix(a.eyeColor, '#ffffff', 0.42));
+  m.blush.color.set(mix(a.skinTone, '#e2607f', 0.45));
   m.accent.color.set(a.accentColor);
   m.inner.color.set(a.innerColor);
 }
