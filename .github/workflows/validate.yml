@@ -27,9 +27,11 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: 独立実装との照合用に oauthlib を入れる
-        # 本番コードは標準ライブラリのみで動く。これは署名の相互検証専用。
-        run: pip install oauthlib
+      - name: 検証用のツールを入れる
+        # 本番コードは標準ライブラリのみで動く。ここで入れるのは検証専用:
+        #   oauthlib - OAuth 署名を独立実装と突き合わせるため
+        #   PyYAML   - ワークフローの構文チェックのため
+        run: pip install oauthlib pyyaml
 
       - name: ワークフローの YAML 構文を確認する
         # post.yml が壊れると定期投稿が黙って止まるため、構文だけでも見ておく
