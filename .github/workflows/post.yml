@@ -1,0 +1,73 @@
+name: 定期投稿
+
+on:
+  schedule:
+    # GitHub Actions の cron は UTC。日本時間 = UTC+9。
+    - cron: "0 23 * * *"   # 08:00 JST (前日 23:00 UTC)
+    - cron: "0 12 * * *"   # 21:00 JST
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "投稿せず内容だけ確認する"
+        type: boolean
+        default: false
+      only:
+        description: "片方だけに投稿 (bluesky / x / 空欄で両方)"
+        type: choice
+        options: ["", "bluesky", "x"]
+        default: ""
+
+# 2 つの実行が重なって状態ファイルが衝突しないよう直列化する。
+concurrency:
+  group: psych-tips-post
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # state/posted.json をコミットして戻すために必要
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 投稿する
+        env:
+          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+        run: |
+          ARGS=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          if [ -n "${{ inputs.only }}" ]; then ARGS="$ARGS --only ${{ inputs.only }}"; fi
+          python src/post.py $ARGS
+
+      - name: 投稿履歴をコミットする
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          if git diff --quiet -- state/; then
+            echo "状態に変化なし。コミットするものはありません。"
+            exit 0
+          fi
+          git config user.name "psych-tips-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/
+          git commit -m "chore: 投稿履歴を更新"
+          # push 先は明示する。checkout 直後は upstream が設定されておらず、
+          # 引数なしの git push は push.default の設定次第で失敗しうるため。
+          # 同時実行やこの間の push に備えて、失敗したら取り込み直して再試行する
+          for attempt in 1 2 3; do
+            if git push origin "HEAD:${GITHUB_REF_NAME}"; then exit 0; fi
+            echo "push 失敗 (${attempt}回目)。取り込み直して再試行します。"
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+            sleep $((attempt * 5))
+          done
+          echo "投稿履歴の push に失敗しました。"
+          exit 1

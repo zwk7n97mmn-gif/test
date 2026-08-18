@@ -1,0 +1,56 @@
+name: コンテンツ検証
+
+# 投稿できない文字数のコンテンツが本番に入るのを防ぐ。
+# 豆知識を追加する PR は、必ずここを通してからマージする。
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "content/**"
+      - "src/**"
+      - "tests/**"
+      - ".github/workflows/**"
+  pull_request:
+    paths:
+      - "content/**"
+      - "src/**"
+      - "tests/**"
+      - ".github/workflows/**"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 検証用のツールを入れる
+        # 本番コードは標準ライブラリのみで動く。ここで入れるのは検証専用:
+        #   oauthlib - OAuth 署名を独立実装と突き合わせるため
+        #   PyYAML   - ワークフローの構文チェックのため
+        run: pip install oauthlib pyyaml
+
+      - name: ワークフローの YAML 構文を確認する
+        # post.yml が壊れると定期投稿が黙って止まるため、構文だけでも見ておく
+        run: |
+          python -c "
+          import sys, yaml, pathlib
+          for path in sorted(pathlib.Path('.github/workflows').glob('*.yml')):
+              try:
+                  yaml.safe_load(path.read_text())
+              except yaml.YAMLError as exc:
+                  sys.exit(f'{path}: {exc}')
+              print(f'ok {path}')
+          "
+
+      - name: 全件の文字数・出典・重複を検証する
+        run: python tests/validate.py --report
+
+      - name: ロジックのテスト
+        run: python tests/test_logic.py
+
+      - name: 投稿内容を実際に組み立ててみる (投稿はしない)
+        run: python src/post.py --dry-run
