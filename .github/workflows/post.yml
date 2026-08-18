@@ -60,9 +60,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add state/
           git commit -m "chore: 投稿履歴を更新"
+          # push 先は明示する。checkout 直後は upstream が設定されておらず、
+          # 引数なしの git push は push.default の設定次第で失敗しうるため。
           # 同時実行やこの間の push に備えて、失敗したら取り込み直して再試行する
           for attempt in 1 2 3; do
-            if git push; then exit 0; fi
+            if git push origin "HEAD:${GITHUB_REF_NAME}"; then exit 0; fi
             echo "push 失敗 (${attempt}回目)。取り込み直して再試行します。"
             git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
             sleep $((attempt * 5))
