@@ -1,9 +1,10 @@
 # Kirinuki Studio — 設計書
 
-ブラウザ完結型の動画編集ツール。素材を解析し、**字幕・カット編集・音声処理**を自動付与し、
+ブラウザ完結型の動画編集ツール。**動画と画像**を並べた素材を解析し、
+**字幕・カット編集・音声処理**を自動付与し、**縦・正方形・横**のいずれの向きにも書き出す。
 **サムネイル**と**SNSキャプション**まで生成する。
 
-- バージョン: 2.0.0（スマートフォン完結対応）
+- バージョン: 3.0.0（複数素材＋縦動画対応）
 - 対象ブラウザ: iOS Safari 17+ / Android Chrome 116+ / デスクトップ Chrome・Edge・Safari
 - 想定端末: **スマートフォン単体で撮影から投稿まで完結すること**を第一目標とする
 - 依存パッケージ: **ゼロ**（ビルド不要。素の ES Modules）
@@ -22,7 +23,7 @@
 | AC-04 | 自動生成字幕を表形式で編集でき、SRT/VTT の入出力ができる。行折返しは日本語禁則処理に従う | ✅ | `test/subtitles.test.js` |
 | AC-05 | 無音区間の自動カット（前後パディング/最小クリップ長/倍速化モード）を適用でき、プレビューと書き出しの双方に反映される | ✅ | `test/autoedit.test.js` |
 | AC-06 | 音声を自動処理する：ラウドネス正規化・BGM の自動ダッキング・フェードイン/アウト | ✅ | `test/audio.test.js` |
-| AC-07 | サムネイル候補を自動抽出（品質スコア順）し、テキスト重ねなど編集して PNG 1280×720 で書き出せる | ✅ | `test/thumbnail.test.js` |
+| AC-07 | サムネイル候補を自動抽出（品質スコア順）し、テキスト重ねなど編集して PNG で書き出せる（出力の向きに追従） | ✅ | `test/thumbnail.test.js` |
 | AC-08a | 編集結果を字幕焼き込みつきの動画として書き出せる（進捗表示・キャンセル可） | ✅ | 手動 |
 | AC-08b | 書き出しコンテナが MP4 | ✅ | WebCodecs + 自前 MP4 多重化で常に MP4。H.264/AAC が使えない環境では VP9/Opus を MP4 に収める（`test/mp4.test.js` `test/mp4-codecs.test.js`、実機再生確認済み） |
 | AC-09 | 字幕内容・尺・シーン数から SNS キャプション（X / Instagram / YouTube / TikTok）を生成し、各プラットフォームの文字数上限を超えない | ✅ | `test/captions.test.js` |
@@ -35,6 +36,8 @@
 | AC-16 | ホーム画面に追加してアプリのように起動でき、オフラインでも開ける | ✅ | manifest + Service Worker |
 | AC-17 | タブが破棄されても素材ごと復帰できる | ✅ | OPFS に素材を保存（600MB まで） |
 | AC-18 | 日本語入力の変換中の文字列が確定前に反映されない | ✅ | `compositionstart` / `compositionend` で保留 |
+| AC-19 | 出力の向き（元のまま / 9:16 / 1:1 / 4:5 / 16:9）と収め方（余白 / 切り取り）を選べ、プレビュー・書き出し・サムネイルすべてに反映される | ✅ | `test/layout.test.js` + 9:16 で書き出した MP4 が 360×640 で再生されることを実測 |
+| AC-20 | 動画と画像を混在させて並べ替えでき、画像は 1 枚あたりの表示秒数（既定 3 秒）を変更できる | ✅ | `test/assets.test.js` `test/autoedit.test.js` + 動画1本＋画像2枚の E2E |
 
 > ⚠️ は AC-03b の 1 件のみ。ブラウザ単体に音声認識エンジンが無いという制約に起因する。
 > 代替経路（STT プロバイダ設定、未設定時はタイムコードのみ生成）を実装済み。
@@ -50,6 +53,8 @@ index.html
     ├── core/ ....................... 純粋関数レイヤ（DOM 非依存 = 単体テスト対象）
     │   ├── util.js ................. タイムコード・数値・ID・非同期ユーティリティ
     │   ├── project.js .............. データモデル / 検証 / Undo・Redo / 永続化
+    │   ├── assets.js ............... 素材（動画・画像）モデルと並べ替え・削除
+    │   ├── layout.js ............... 出力の縦横比・フィット計算（縦動画対応）
     │   ├── analysis.js ............. RMS 包絡・VAD・シーン検出・フレーム品質
     │   ├── autoedit.js ............. カットプラン生成・タイムライン⇔ソース時刻変換
     │   ├── subtitles.js ............ 分割・禁則折返し・SRT/VTT 相互変換
@@ -60,6 +65,7 @@ index.html
     ├── core/mp4.js ................. MP4 多重化（ISO BMFF）と検証用パーサ
     ├── media/ ...................... 副作用レイヤ（WebAudio / Canvas / WebCodecs）
     │   ├── decoder.js .............. 音声デコード(16kHz) + フレームサンプリング
+    │   ├── assetstore.js ........... 素材の実体（File / Blob URL / 要素）管理
     │   ├── player.js ............... タイムライン再生エンジン（クリップ連結再生）
     │   ├── encoder.js .............. WebCodecs 書き出し（既定経路）
     │   ├── framesource.js .......... 書き出し用フレーム取得
@@ -90,32 +96,63 @@ index.html
 
 ```ts
 Project {
-  id: string; name: string; version: 1;
+  id: string; name: string; version: 3;
   createdAt: number; updatedAt: number;
-  media: { name, size, type, duration, width, height, fps, hasAudio } | null;
+
+  assets: Asset[];      // 素材の並び順がそのままタイムラインの並び順
+  media: Asset | null;  // 代表素材（assets[0]）のミラー。表示と既定値の算出用
+
+  output: { aspect: 'source'|'9:16'|'1:1'|'4:5'|'16:9';
+            fit: 'contain'|'cover';
+            background: 'blur'|'black'|'white';
+            maxSize: number };            // 長辺の上限
+  imageDefaults: { durationSec: number }; // 画像を追加したときの既定秒数（3）
+
   analysis: {
     done: boolean;
-    envelope: { hopSec: number; db: number[] };      // RMS 包絡 (dBFS)
-    speech:  Segment[];                              // 発話区間（ソース時刻）
-    scenes:  { start, end, score }[];                // シーン
-    frames:  { t, score, sharp, colorful, exposure, contrast }[];
-    loudness:{ integratedDb, peakDb, noiseFloorDb };
+    byAsset: Record<AssetId, AssetAnalysis>;   // 素材ごとに独立して持つ
   };
-  clips: Clip[];        // Clip { id, start, end, speed, enabled } — ソース時刻
-  subtitles: Cue[];     // Cue { id, start, end, text, needsText } — ソース時刻
+  clips: Clip[];        // Clip { id, assetId, start, end, speed, enabled } — ソース時刻
+  subtitles: Cue[];     // Cue  { id, assetId, start, end, text, needsText } — ソース時刻
   subtitleStyle: { fontSize, family, weight, color, strokeColor, strokeWidth,
                    background, position, maxCharsPerLine, maxLines, safeMargin };
   audio: { normalize, targetDb, duck, duckDb, fadeIn, fadeOut, bgmGainDb, bgmName };
-  thumbnail: { sourceTime, template, title, subtitle, accent, scrim, align, badge };
+  thumbnail: { sourceAssetId, sourceTime, template, title, subtitle, accent, scrim, badge };
   caption: { platform, tone, includeChapters, includeHashtags, text };
   autoEdit: { enabled, mode:'cut'|'speed', padStart, padEnd, minGap, minClip, speedFactor };
   stt: { providerId:'vad'|'remote', endpoint, model, language };  // apiKey は保存しない
 }
+
+Asset {
+  id: string;
+  kind: 'video' | 'image';
+  name, size, type;
+  duration: number;   // 画像は「表示秒数」（既定 3 / 0.5〜30）
+  width, height;
+  fps: number;        // 画像は 0
+  hasAudio: boolean;  // 画像は常に false
+}
+
+AssetAnalysis {
+  done: boolean;
+  envelope: { hopSec: number; db: number[] };      // RMS 包絡 (dBFS)
+  speech:  Segment[];                              // 発話区間（ソース時刻）
+  scenes:  { start, end, score }[];
+  frames:  { t, score, sharp, colorful, exposure, contrast }[];
+  loudness:{ integratedDb, peakDb, noiseFloorDb };
+  warnings: string[];
+}
 ```
 
-- 時刻は**すべて秒（number）**、**ソース素材基準**で保持する。タイムライン時刻への写像は `autoedit.js` が一手に引き受ける。
-- 動画ファイル本体はプロジェクト JSON には含めない。ただし端末内の **OPFS には保存**しており、
-  タブが破棄されても素材ごと復帰できる（保存できなかった場合のみ「素材を再選択してください」に落とす）。
+- 時刻は**すべて秒（number）**、**素材（`assetId`）ごとのソース時刻**で保持する。
+  タイムライン時刻への写像は `autoedit.js` が一手に引き受ける
+  （`timelineToSource` は `{clipIndex, assetId, sourceTime, clip}` を返す）。
+- 素材ファイル本体はプロジェクト JSON には含めない。ただし端末内の **OPFS には素材 ID ごとに保存**しており、
+  タブが破棄されても素材ごと復帰できる（保存できなかった素材のみ「再選択してください」に落とす）。
+- **v1/v2 からの移行**：`assets` キーが無いプロジェクトは旧 `media` から素材 1 件を生成し、
+  `assetId` を持たないクリップ・字幕をその素材へ結び付ける。旧 `analysis` は `byAsset` へ畳み込む。
+  `assets: []`（＝最後の素材を削除した状態）は移行対象にしない。ここを取り違えると
+  削除した素材が `media` ミラーから復活する。
 
 ---
 
@@ -156,6 +193,44 @@ Project {
 プラットフォーム別テンプレート（フック / 本文 / チャプター / ハッシュタグ）で組み立て、
 `X:280 / Instagram:2200 / YouTube:5000 / TikTok:2200` 文字を**必ず超えないよう**末尾から段階的に切り詰める。
 
+### 4.7 出力の縦横比とフィット（`core/layout.js`）
+
+出力サイズは `resolveOutputSize(output, source)` が決める。
+
+1. `aspect: 'source'` は素材の比率をそのまま使う。それ以外は `9:16 / 1:1 / 4:5 / 16:9`。
+2. **出力の長辺を、素材の長辺（`maxSize` で頭打ち）に合わせる。**
+   例：素材 1280×720 を 9:16 にすると、長辺 1280 を高さに割り当てて **720×1280**。
+3. **拡大はしない。** 素材の長辺を超える出力は作らない（引き伸ばしても画質は上がらないため）。
+4. 幅・高さは常に**偶数**へ丸める（H.264 / VP9 の 4:2:0 クロマサブサンプリングの制約）。
+
+各フレームの配置は `computeFitRect(srcW, srcH, dstW, dstH, fit)` が返す矩形に従う。
+
+| fit | 挙動 | 余白 |
+|---|---|---|
+| `contain` | 全体を収める（見切れない） | 出る → `background` で埋める |
+| `cover` | 画面いっぱい（余白なし） | 出ない → 端が切れる |
+
+`background: 'blur'` は同じフレームを画面いっぱいに引き伸ばし、`ctx.filter = 'blur()'` を掛けて
+背景として敷いた上に本体を重ねる（`ctx.filter` 非対応の環境は黒へ縮退）。
+`describeFraming()` が「360×640（画面いっぱい・素材の約 32% が映ります）」のように
+**切り取り量を数値で**返し、素材パネルと書き出しパネルの両方に表示する。
+
+プレビュー枠は JS が `aspect-ratio` と `max-width`（＝上限の高さ × 縦横比）を与える。
+`max-height` だけで抑えると枠のみが縮んで**中身が切れる**ため、幅の側から抑えている。
+
+### 4.8 画像素材
+
+画像は「音声を持たず、任意の秒数だけ同じ絵が続く素材」として動画と同じ `Asset` で表す。
+
+- 既定 3 秒。`0.5〜30 秒`へクランプ（`core/assets.js`）。
+- 解析（VAD・シーン検出）の対象外。`buildCutPlanForClips` は画像クリップを**素通し**する
+  ので、自動カットで画像の尺が勝手に変わることはない。
+- 再生時の時計は**プレイヤー側**が持つ（`performance.now()` の差分を進める）。
+  動画クリップでは `video.currentTime` が時計になるため、素材の種類で時計の持ち主が入れ替わる。
+  こうしないと画像区間で音ズレが起きるか、映像が止まる。
+- 書き出しでは `framesource.js` がシークせず即座に同じ `HTMLImageElement` を返す。
+- サムネイル候補としては、フレーム抽出を経ずに**画像そのもの**が候補に並ぶ。
+
 ---
 
 ## 5. アクセシビリティ設計
@@ -173,7 +248,7 @@ Project {
 
 | 画面 | 空 | 読込中 | エラー |
 |---|---|---|---|
-| 素材 | ドロップゾーン + 対応形式の明示 | ファイル読込プログレス | 非対応コーデック/破損 → 原因と対処 |
+| 素材 | ドロップゾーン + 対応形式の明示 | ファイル読込プログレス | 非対応コーデック/破損 → **ファイルごとに**理由を出し、読めた素材は残す |
 | 解析 | 「解析を実行」CTA | 段階別プログレス（音声デコード → 包絡 → VAD → フレーム → シーン）+ キャンセル | 音声トラック無し → 映像のみモードへ縮退 |
 | 字幕 | 0 件表示 + 「自動生成」CTA | STT 進捗（%） | STT 失敗 → VAD 結果は残し再試行導線 |
 | サムネ | 候補なし → 現在位置から生成 | 候補抽出中 | 描画失敗（CORS 等）を通知 |
@@ -187,20 +262,33 @@ Project {
 ## 7. テスト
 
 ```bash
-npm test          # node --test（依存ゼロ）
+npm test          # 189 件 / node --test（依存ゼロ）
 npm start         # 静的サーバで http://localhost:8080
 ```
 
 `core/` は 100% Node 上で実行可能。`media/` `ui/` は DOM 依存のため手動テスト手順を `docs/QA.md` に記載。
 
+DOM 側は Playwright + Chromium で以下を実測している（手順は `docs/QA.md`）。
+
+- 動画 1 本＋画像 2 枚を一度に追加 → 自動処理 → 9:16 で書き出し
+  → 生成された MP4 が **360×640 / 10.14 秒**で再生され、動画区間・画像区間の両方が映ることを
+  デコード後のピクセル値で確認
+- `source / 9:16 / 1:1` × `contain / cover` でプレビューのキャンバス寸法と
+  上端・中央・下端のピクセルを比較し、ぼかし背景と切り取りが効いていることを確認
+- 320〜1500px 幅でプレビュー枠が中身をはみ出さないこと
+
 ---
 
 ## 8. 既知の制約
 
-1. 書き出しは実時間レンダリング（`MediaRecorder`）。10 分の動画は約 10 分かかる。
+1. 書き出しには出力尺の 1〜2 倍の時間がかかる（フレーム取得のシークが支配的。9.3 参照）。
+   WebCodecs 非対応環境では `MediaRecorder` へ退避し、実時間になる。
 2. 音声認識テキストは外部 STT 設定時のみ（AC-03b）。
-3. コンテナは環境依存で MP4 / WebM（AC-08b）。
-4. `decodeAudioData` が対応しないコーデック（一部 mov/HEVC 音声）は映像のみモードに縮退する。
+3. `decodeAudioData` が対応しないコーデック（一部 mov/HEVC 音声）は映像のみモードに縮退する。
+4. 出力サイズは素材の長辺を超えて拡大しない。小さい素材から大きな縦動画は作れない。
+5. 画像素材は解析・自動カットの対象外（音声を持たないため）。
+6. 素材ごとに解析結果を持つため、素材数に比例してメモリと `localStorage` の使用量が増える。
+   保存時は包絡・フレーム候補を間引いている（`thinAssetAnalysis`）。
 
 
 ---

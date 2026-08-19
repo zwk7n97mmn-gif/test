@@ -2,8 +2,9 @@
  * 字幕エディタ。5,000 件規模でも破綻しないよう可視範囲のみ描画する（仮想スクロール）。
  */
 
-import { charsPerSecond, normalizeCues, parseSubtitles, shiftCues, validateCues } from '../core/subtitles.js';
+import { charsPerSecond, parseSubtitles, shiftCues, validateCues } from '../core/subtitles.js';
 import { clamp, ellipsize, formatTime, parseTime, uid } from '../core/util.js';
+import { findAsset, primaryAsset } from '../core/assets.js';
 import { button, confirmDialog, emptyState, h, imeSafeInput, toast } from './dom.js';
 
 const ROW_HEIGHT = 132; // タップ領域 44px を確保した行の高さ
@@ -39,8 +40,13 @@ export function createSubtitleEditor({ store, onSeek, onAutoGenerate }) {
           toast(errors[0] || '字幕を読み込めませんでした。', { type: 'error' });
           return;
         }
+        const assetId = primaryAsset(store.getState().assets)?.id;
+        if (!assetId) {
+          toast('先に素材を追加してください。', { type: 'error' });
+          return;
+        }
         store.commit((draft) => {
-          draft.subtitles = cues;
+          draft.subtitles = cues.map((c) => ({ ...c, assetId }));
         }, { label: '字幕を取り込み' });
         toast(`${cues.length} 件の字幕を取り込みました。${errors.length ? `（${errors.length} 件スキップ）` : ''}`, { type: 'success' });
       },
@@ -85,20 +91,29 @@ export function createSubtitleEditor({ store, onSeek, onAutoGenerate }) {
       return;
     }
     store.commit((draft) => {
-      draft.subtitles = normalizeCues(shiftCues(draft.subtitles, delta), draft.media?.duration || 0);
+      draft.subtitles = shiftCues(draft.subtitles, delta);
     }, { label: '字幕をシフト' });
     toast(`字幕全体を ${delta > 0 ? '+' : ''}${delta} 秒ずらしました。`, { type: 'success' });
   }
 
   function addCue() {
-    const duration = store.getState().media?.duration || 0;
-    const last = store.getState().subtitles.at(-1);
-    const start = last ? Math.min(last.end + 0.1, Math.max(0, duration - 1)) : 0;
+    const state = store.getState();
+    // 直前の字幕と同じ素材、無ければ代表素材へ追加する
+    const last = state.subtitles.at(-1);
+    const assetId = last?.assetId || primaryAsset(state.assets)?.id;
+    if (!assetId) {
+      toast('先に素材を追加してください。', { type: 'error' });
+      return;
+    }
+    const duration = findAsset(state.assets, assetId)?.duration || 0;
+    const sameAsset = state.subtitles.filter((c) => c.assetId === assetId);
+    const prev = sameAsset.at(-1);
+    const start = prev ? Math.min(prev.end + 0.1, Math.max(0, duration - 1)) : 0;
     store.commit((draft) => {
-      draft.subtitles = normalizeCues(
-        [...draft.subtitles, { id: uid('cue'), start, end: Math.min(start + 2, duration || start + 2), text: '', needsText: true }],
-        duration,
-      );
+      draft.subtitles = [
+        ...draft.subtitles,
+        { id: uid('cue'), assetId, start, end: Math.min(start + 2, duration || start + 2), text: '', needsText: true },
+      ];
     }, { label: '字幕を追加' });
   }
 
@@ -203,7 +218,8 @@ export function createSubtitleEditor({ store, onSeek, onAutoGenerate }) {
             e.target.value = formatTime(cue.end, { ms: true });
             return;
           }
-          const duration = store.getState().media?.duration || parsed;
+          const asset = findAsset(store.getState().assets, cue.assetId);
+          const duration = asset?.duration || parsed;
           updateCue(cue.id, { end: clamp(parsed, cue.start + 0.05, duration) });
         },
       },
@@ -252,7 +268,7 @@ export function createSubtitleEditor({ store, onSeek, onAutoGenerate }) {
       ]),
       textarea,
       h('div.cue-row__actions', {}, [
-        button('▶ 位置へ', { onClick: () => onSeek(cue.start) }),
+        button('▶ 位置へ', { onClick: () => onSeek(cue.start, cue.assetId) }),
         button('分割', { onClick: () => splitCue(cue.id) }),
         button('削除', { variant: 'danger', onClick: () => removeCue(cue.id) }),
       ]),

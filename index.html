@@ -42,10 +42,10 @@
         <canvas id="preview-canvas" width="1280" height="720" aria-label="編集結果のプレビュー" role="img"></canvas>
 
         <div id="dropzone" class="dropzone" role="button" tabindex="0"
-             aria-label="動画ファイルを選択、またはここへドラッグ＆ドロップ">
-          <p class="dropzone__title">動画をドラッグ＆ドロップ</p>
-          <p class="dropzone__desc">またはクリック / Enter でファイルを選択<br>対応形式: MP4 (H.264) / WebM / MOV</p>
-          <p class="dropzone__note">ファイルはブラウザ内でのみ処理され、外部に送信されません。</p>
+             aria-label="動画・画像ファイルを選択、またはここへドラッグ＆ドロップ">
+          <p class="dropzone__title">動画・画像をドラッグ＆ドロップ</p>
+          <p class="dropzone__desc">またはクリック / Enter でファイルを選択（複数可）<br>動画: MP4 (H.264) / WebM / MOV ・ 画像: JPEG / PNG / WebP / HEIC</p>
+          <p class="dropzone__note">画像は 1 枚あたり既定 3 秒で表示されます。ファイルはブラウザ内でのみ処理され、外部に送信されません。</p>
         </div>
 
         <p id="preview-overlay" class="preview-overlay" role="status" aria-live="polite" hidden></p>
@@ -87,7 +87,9 @@
     </aside>
   </main>
 
-  <input id="file-input" type="file" accept="video/mp4,video/webm,video/quicktime,video/*" class="sr-only" aria-label="動画ファイルを選択">
+  <input id="file-input" type="file" multiple
+         accept="video/mp4,video/webm,video/quicktime,video/*,image/jpeg,image/png,image/webp,image/heic,image/heif,image/avif,image/*"
+         class="sr-only" aria-label="動画・画像ファイルを選択（複数可）">
 
   <noscript>
     <p class="alert alert--error">このツールは JavaScript を有効にしてご利用ください。</p>

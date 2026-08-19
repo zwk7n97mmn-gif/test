@@ -3,6 +3,7 @@
  */
 
 import { editSummary, timelineDuration } from '../core/autoedit.js';
+import { describeFraming, resolveOutputSize } from '../core/layout.js';
 import { toSRT, toVTT } from '../core/subtitles.js';
 import { serializeProject } from '../core/project.js';
 import { describeError, formatTime, speakableTime } from '../core/util.js';
@@ -12,7 +13,7 @@ import { createWakeLock } from '../media/wakelock.js';
 import { announce, button, errorBox, h, infoBox, loading, select, toast } from './dom.js';
 import { sanitizeFilename } from './thumbnailEditor.js';
 
-export function createExportPanel({ store, getSourceUrl, getSourceFile, getBgmBuffer, beforeExport }) {
+export function createExportPanel({ store, getAssetUrl, getAssetFile, getAssetImage, getBgmBuffer, beforeExport }) {
   const wakeLock = createWakeLock();
   /** 出力形式の判定は非同期なので結果を保持する */
   let cachedPlan = null;
@@ -85,7 +86,7 @@ export function createExportPanel({ store, getSourceUrl, getSourceFile, getBgmBu
 
   async function startExport() {
     const state = store.getState();
-    if (!getSourceUrl()) {
+    if (!state.assets.length) {
       toast('素材が読み込まれていません。', { type: 'error' });
       return;
     }
@@ -125,11 +126,11 @@ export function createExportPanel({ store, getSourceUrl, getSourceFile, getBgmBu
       const result = await renderVideo({
         project: state,
         plan,
-        sourceUrl: getSourceUrl(),
-        sourceFile: getSourceFile?.() || null,
+        getAssetUrl,
+        getAssetFile,
+        getAssetImage,
         bgmBuffer: getBgmBuffer(),
-        width: target.width,
-        height: target.height,
+        maxSize: target.maxSize,
         fps: state.media?.fps || 30,
         signal: controller.signal,
         onProgress: ({ ratio, currentSec, phase, detail }) => {
@@ -196,9 +197,9 @@ export function createExportPanel({ store, getSourceUrl, getSourceFile, getBgmBu
   /** 出力形式を判定して結果を覚えておく */
   async function currentPlan() {
     const state = store.getState();
-    const needsAudio = state.media?.hasAudio !== false || Boolean(getBgmBuffer());
+    const needsAudio = (state.assets || []).some((a) => a.hasAudio) || Boolean(getBgmBuffer());
     // 解析前は音声の有無が未確定なので、判定結果のキーに含めて取り直す
-    const key = `${state.media?.width}x${state.media?.height}@${state.media?.fps}:${resolution}:${needsAudio}`;
+    const key = `${state.media?.width}x${state.media?.height}@${state.media?.fps}:${resolution}:${needsAudio}:${state.output?.aspect}:${state.output?.fit}`;
     if (cachedPlan && cachedPlan.key === key) return cachedPlan.plan;
     const target = resolutionSize(state, resolution);
     const plan = await resolveExportPlan({
@@ -211,22 +212,24 @@ export function createExportPanel({ store, getSourceUrl, getSourceFile, getBgmBu
     return plan;
   }
 
+  /**
+   * 画質の指定を「長辺の上限」へ変換する。
+   * 実際の縦横比は project.output（向き）が決めるので、ここではサイズだけを扱う。
+   */
   function resolutionSize(state, mode) {
-    const w = state.media?.width || 1280;
-    const h2 = state.media?.height || 720;
-    if (mode === 'source') return { width: w, height: h2 };
-    const targetHeight = Number(mode);
-    const scale = targetHeight / Math.max(1, h2);
-    return { width: Math.round(w * scale), height: targetHeight };
+    const maxSize = mode === 'source' ? (state.output?.maxSize ?? 1920) : Number(mode);
+    const size = resolveOutputSize({ ...state.output, maxSize }, state.media || { width: 1280, height: 720 });
+    return { ...size, maxSize };
   }
 
   function renderSummary() {
     const state = store.getState();
-    if (!state.media) {
+    if (!state.assets.length) {
       summaryHost.replaceChildren(h('p.hint', { text: '素材が読み込まれていません。' }));
       return;
     }
-    const summary = editSummary(state.clips, state.media.duration);
+    const sourceTotal = (state.assets || []).reduce((sum, a) => sum + a.duration, 0);
+    const summary = editSummary(state.clips, sourceTotal);
     const cues = state.subtitles.filter((c) => c.text.trim()).length;
     const formatDd = h('dd', { text: '判定中…' });
     summaryHost.replaceChildren(
@@ -237,6 +240,11 @@ export function createExportPanel({ store, getSourceUrl, getSourceFile, getBgmBu
         h('dd', { text: `${summary.clipCount} クリップ / ${(summary.removedRatio * 100).toFixed(1)}% 削減` }),
         h('dt', { text: '焼き込み字幕' }),
         h('dd', { text: `${cues} 件` }),
+        h('dt', { text: '出力サイズ' }),
+        h('dd', { text: describeFraming(state.media?.width || 1280, state.media?.height || 720, {
+          ...state.output,
+          maxSize: resolutionSize(state, resolution).maxSize,
+        }) }),
         h('dt', { text: '出力形式' }),
         formatDd,
       ]),
@@ -251,15 +259,14 @@ export function createExportPanel({ store, getSourceUrl, getSourceFile, getBgmBu
   }
 
   function renderControls(busy) {
-    const state = store.getState();
     const resSelect = select({
-      label: '解像度',
+      label: '画質（長辺の上限）',
       value: resolution,
       options: [
-        { value: 'source', label: `元の解像度（${state.media?.width || '—'}×${state.media?.height || '—'}）` },
-        { value: '1080', label: '1080p' },
-        { value: '720', label: '720p' },
-        { value: '480', label: '480p' },
+        { value: 'source', label: '素材に合わせる' },
+        { value: '1080', label: '1080' },
+        { value: '720', label: '720' },
+        { value: '480', label: '480' },
       ],
       onChange: (v) => {
         resolution = v;

@@ -22,6 +22,8 @@
   --gap: 12px;
   --tap: 44px;
   --tabbar-height: 62px;
+  /* プレビュー枠の高さの上限。縦動画でも操作部が画面外に出ないようにする。 */
+  --preview-max-h: 62vh;
   --font: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif;
 }
 
@@ -125,7 +127,14 @@ p { margin: 0 0 8px; }
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
+  /* 出力の向きに合わせて JS が aspect-ratio と max-width を上書きする（既定は横） */
   aspect-ratio: 16 / 9;
+  /* 縦動画では枠が極端に高くなる。max-height で抑えると枠だけが縮んで
+     中身が切れるため、JS 側で「この高さ × 縦横比」を max-width に与え、
+     幅の側から高さを抑える。 */
+  max-width: calc(var(--preview-max-h) * 16 / 9);
+  margin-inline: auto;
+  width: 100%;
   display: grid;
   place-items: center;
 }
@@ -338,6 +347,48 @@ input:disabled, select:disabled, textarea:disabled, .btn:disabled { opacity: 0.5
 
 .badge { border-radius: 999px; padding: 1px 8px; font-size: 0.75rem; font-weight: 700; }
 .badge--warn { background: var(--warning); color: #1b1400; }
+
+/* ---------- 素材リスト ---------- */
+
+.asset-list { display: flex; flex-direction: column; gap: 8px; }
+.asset-list:empty { display: none; }
+
+.asset-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.asset-item__head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.asset-item__kind { font-size: 1.1rem; line-height: 1; flex: none; }
+.asset-item__name {
+  font-weight: 700;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.asset-item__head .badge { flex: none; margin-left: auto; }
+
+.asset-item__meta {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.asset-item__duration-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.asset-item__duration-row label { font-size: 0.85rem; color: var(--text-muted); font-weight: 600; }
+.asset-item__duration { width: 6.5em; min-height: var(--tap); text-align: right; }
+.asset-item__duration-row .hint { margin: 0; }
+
+.asset-item__actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.asset-item__actions .btn { min-width: var(--tap); }
 
 .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { background: var(--surface-raised); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; font-size: 0.82rem; }

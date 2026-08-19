@@ -6,25 +6,71 @@
 import { wrapText } from '../core/subtitles.js';
 import { clamp } from '../core/util.js';
 import { THUMBNAIL_TEMPLATES, layoutThumbnailText } from '../core/thumbnail.js';
+import { computeFitRect } from '../core/layout.js';
+
+/** 素材（video / image / canvas）の中身のサイズを取る */
+export function sourceSize(source) {
+  return {
+    width: source?.videoWidth || source?.naturalWidth || source?.width || 0,
+    height: source?.videoHeight || source?.naturalHeight || source?.height || 0,
+  };
+}
 
 /**
- * 映像を letterbox 配置で描画する。
+ * 素材を出力フレームへ描画する。
+ *
+ * 横素材を縦動画にする場合など、縦横比が違うときの扱いを fit で選ぶ。
+ *   contain … 全体を収める（余白が出る。余白は background で埋める）
+ *   cover   … 画面いっぱい（端が切れる）
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {CanvasImageSource} source video / img / canvas
+ * @param {{fit?:'contain'|'cover', background?:'blur'|'black'|'white'}} [opt]
  */
-export function drawVideoFrame(ctx, source, width, height, { background = '#000000' } = {}) {
+export function drawVideoFrame(ctx, source, width, height, opt = {}) {
+  const fit = opt.fit === 'cover' ? 'cover' : 'contain';
+  const background = opt.background || 'black';
+  const { width: sw, height: sh } = sourceSize(source);
+
   ctx.save();
-  ctx.fillStyle = background;
+  ctx.fillStyle = background === 'white' ? '#ffffff' : '#000000';
   ctx.fillRect(0, 0, width, height);
-  const sw = source?.videoWidth || source?.width || 0;
-  const sh = source?.videoHeight || source?.height || 0;
-  if (sw > 0 && sh > 0) {
-    const scale = Math.min(width / sw, height / sh);
-    const dw = sw * scale;
-    const dh = sh * scale;
-    try {
-      ctx.drawImage(source, (width - dw) / 2, (height - dh) / 2, dw, dh);
-    } catch {
-      // まだデコード済みフレームが無い場合は黒のまま
-    }
+  ctx.restore();
+
+  if (!(sw > 0 && sh > 0)) return;
+  const rect = computeFitRect(sw, sh, width, height, fit);
+
+  // 余白が出る場合だけ、背景に引き伸ばしてぼかした同じ映像を敷く
+  if (background === 'blur' && rect.letterboxed) {
+    drawBlurredBackdrop(ctx, source, width, height, sw, sh);
+  }
+
+  try {
+    ctx.drawImage(source, rect.x, rect.y, rect.width, rect.height);
+  } catch {
+    // まだデコード済みフレームが無い場合は背景のまま
+  }
+}
+
+/**
+ * 余白を埋めるぼかし背景。
+ * ctx.filter が使えない環境では単色のままにする（描画が壊れるよりよい）。
+ */
+function drawBlurredBackdrop(ctx, source, width, height, sw, sh) {
+  if (typeof ctx.filter !== 'string') return;
+  const cover = computeFitRect(sw, sh, width, height, 'cover');
+  // ぼかすと端が薄くなるので、少し大きめに描いてから切り取る
+  const pad = Math.max(width, height) * 0.08;
+  ctx.save();
+  try {
+    ctx.filter = `blur(${Math.round(Math.max(width, height) * 0.04)}px)`;
+    ctx.drawImage(source, cover.x - pad, cover.y - pad, cover.width + pad * 2, cover.height + pad * 2);
+    ctx.filter = 'none';
+    // 前面の映像を目立たせるため、背景をわずかに暗くする
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(0, 0, width, height);
+  } catch {
+    /* 背景は諦めて単色のまま */
   }
   ctx.restore();
 }
@@ -97,8 +143,11 @@ function roundRect(ctx, x, y, w, h, r) {
  * @param {CanvasImageSource} source
  * @param {object} thumbnail project.thumbnail
  */
-export function drawThumbnail(ctx, source, thumbnail, width, height) {
-  drawVideoFrame(ctx, source, width, height);
+export function drawThumbnail(ctx, source, thumbnail, width, height, framing = {}) {
+  drawVideoFrame(ctx, source, width, height, {
+    fit: framing.fit || 'cover',
+    background: framing.background || 'blur',
+  });
   const template = THUMBNAIL_TEMPLATES[thumbnail.template] || THUMBNAIL_TEMPLATES.boldBottom;
   const layout = layoutThumbnailText({
     title: thumbnail.title,

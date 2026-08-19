@@ -1,11 +1,16 @@
 /**
  * タイムライン再生エンジン。
- * enabled なクリップを連結して 1 本の動画として再生し、canvas へ字幕込みで描画する。
- * プレビューと書き出しの双方がこのクラスを使う（destination を差し替えるだけ）。
+ *
+ * enabled なクリップを順に連結して 1 本の動画として再生し、canvas へ字幕込みで描画する。
+ * クリップは素材（動画・画像）をまたぐため、素材ごとの要素を切り替えながら進む。
+ * プレビューと書き出しは同じ描画・音声プラン生成コードを共有する。
  */
 
 import { layoutClips, projectCuesToTimeline, timelineDuration, timelineToSource } from '../core/autoedit.js';
 import { buildAudioPlan, evaluateAutomation, fadeGainAt } from '../core/audio.js';
+import { findAsset } from '../core/assets.js';
+import { resolveOutputSize } from '../core/layout.js';
+import { assetAnalysis } from '../core/project.js';
 import { cueAt } from '../core/subtitles.js';
 import { clamp, dbToGain } from '../core/util.js';
 import { drawSubtitle, drawVideoFrame } from './render.js';
@@ -14,15 +19,15 @@ const EPS = 0.02;
 
 export class TimelinePlayer {
   /**
-   * @param {{video:HTMLVideoElement, canvas:HTMLCanvasElement, audioContext:AudioContext,
+   * @param {{canvas:HTMLCanvasElement, audioContext:AudioContext, runtime:object,
    *          destination?:AudioNode, getProject:()=>object,
    *          onTime?:(t:number, total:number)=>void, onEnded?:()=>void, onError?:(e:Error)=>void}} opt
    */
   constructor(opt) {
-    this.video = opt.video;
     this.canvas = opt.canvas;
-    this.ctx = this.canvas.getContext('2d');
+    this.ctx = this.canvas.getContext('2d', { alpha: false });
     this.audioContext = opt.audioContext;
+    this.runtime = opt.runtime;
     this.getProject = opt.getProject;
     this.onTime = opt.onTime;
     this.onEnded = opt.onEnded;
@@ -33,9 +38,12 @@ export class TimelinePlayer {
     this.clipIndex = 0;
     this.seeking = false;
     this.rafId = null;
+    this.lastTick = 0;
     this.bgmBuffer = null;
     this.bgmSource = null;
     this.plan = null;
+    /** 要素 → MediaElementAudioSourceNode（要素ごとに 1 つしか作れない） */
+    this.mediaSources = new Map();
 
     const ctx = this.audioContext;
     this.destination = opt.destination || ctx.destination;
@@ -45,19 +53,26 @@ export class TimelinePlayer {
     this.voiceGain.connect(this.masterGain);
     this.bgmGain.connect(this.masterGain);
     this.masterGain.connect(this.destination);
-
-    try {
-      this.mediaSource = ctx.createMediaElementSource(this.video);
-      this.mediaSource.connect(this.voiceGain);
-    } catch {
-      // 既に接続済みの要素は再利用できない。呼び出し側で 1 インスタンスに保つこと。
-      this.onError?.(new Error('この動画要素は既に音声グラフへ接続されています。'));
-    }
   }
 
-  /** 総尺（タイムライン秒） */
   get duration() {
     return timelineDuration(this.getProject().clips);
+  }
+
+  /** 出力サイズ（縦動画などの指定を反映） */
+  outputSize() {
+    const project = this.getProject();
+    return resolveOutputSize(project.output, project.media || { width: 1280, height: 720 });
+  }
+
+  /** canvas を出力サイズへ合わせる */
+  syncCanvasSize() {
+    const { width, height } = this.outputSize();
+    if (this.canvas.width !== width || this.canvas.height !== height) {
+      this.canvas.width = width;
+      this.canvas.height = height;
+    }
+    return { width, height };
   }
 
   setBgmBuffer(buffer) {
@@ -72,12 +87,42 @@ export class TimelinePlayer {
   refreshPlan() {
     const project = this.getProject();
     const total = timelineDuration(project.clips);
-    const speechTimeline = projectCuesToTimeline(
-      project.analysis.speech.map((s, i) => ({ id: `sp${i}`, ...s })),
-      project.clips,
-    );
-    this.plan = buildAudioPlan(project.audio, project.analysis.loudness, speechTimeline, total);
+    // 発話区間を素材ごとに集め、タイムライン時刻へ写像する
+    const speechCues = [];
+    for (const asset of project.assets || []) {
+      const speech = assetAnalysis(project, asset.id).speech || [];
+      speech.forEach((seg, i) => speechCues.push({ id: `sp_${asset.id}_${i}`, assetId: asset.id, ...seg }));
+    }
+    const speechTimeline = projectCuesToTimeline(speechCues, project.clips);
+    const loudness = this.primaryLoudness(project);
+    this.plan = buildAudioPlan(project.audio, loudness, speechTimeline, total);
     return this.plan;
+  }
+
+  /** 代表的なラウドネス（音声を持つ素材の平均） */
+  primaryLoudness(project) {
+    const values = [];
+    for (const asset of project.assets || []) {
+      if (asset.kind !== 'video' || !asset.hasAudio) continue;
+      const analysis = assetAnalysis(project, asset.id);
+      if (analysis.loudness && analysis.loudness.integratedDb > -60) values.push(analysis.loudness);
+    }
+    if (!values.length) return { integratedDb: -70, peakDb: -100, noiseFloorDb: -100 };
+    return {
+      integratedDb: values.reduce((s, v) => s + v.integratedDb, 0) / values.length,
+      peakDb: Math.max(...values.map((v) => v.peakDb)),
+      noiseFloorDb: Math.min(...values.map((v) => v.noiseFloorDb)),
+    };
+  }
+
+  /** 現在のクリップが指す素材と要素 */
+  currentSource() {
+    const project = this.getProject();
+    const laid = layoutClips(project.clips);
+    const clip = laid[Math.min(this.clipIndex, Math.max(0, laid.length - 1))];
+    if (!clip) return { clip: null, asset: null, element: null };
+    const asset = findAsset(project.assets, clip.assetId);
+    return { clip, asset, element: this.runtime?.element(clip.assetId) || null };
   }
 
   async play() {
@@ -88,22 +133,62 @@ export class TimelinePlayer {
     this.refreshPlan();
     if (this.audioContext.state === 'suspended') await this.audioContext.resume();
     await this.seek(this.timelineTime, { keepPlaying: true });
+
     this.playing = true;
-    try {
-      await this.video.play();
-    } catch {
-      this.playing = false;
-      this.onError?.(new Error('再生を開始できませんでした。もう一度操作してください。'));
-      return;
+    this.lastTick = performance.now();
+    const { asset, element } = this.currentSource();
+    if (asset?.kind === 'video' && element) {
+      const ok = await this.startVideo(element);
+      if (!ok) {
+        this.playing = false;
+        return;
+      }
     }
     this.startBgm(this.timelineTime);
     this.loop();
   }
 
+  /** 動画要素を再生し、音声グラフへ接続する */
+  async startVideo(element) {
+    this.connectAudio(element);
+    try {
+      await element.play();
+      return true;
+    } catch {
+      this.onError?.(new Error('再生を開始できませんでした。もう一度操作してください。'));
+      return false;
+    }
+  }
+
+  /** 要素ごとに 1 度だけ MediaElementSource を作る */
+  connectAudio(element) {
+    if (!(element instanceof HTMLVideoElement) || this.mediaSources.has(element)) return;
+    try {
+      const node = this.audioContext.createMediaElementSource(element);
+      node.connect(this.voiceGain);
+      this.mediaSources.set(element, node);
+    } catch {
+      // 既に接続済みの要素（別インスタンスが掴んでいる）は音が出ないだけで再生は続ける
+      this.mediaSources.set(element, null);
+    }
+  }
+
+  /** 現在のクリップ以外の動画を止める */
+  pauseOthers(exceptElement) {
+    for (const id of this.runtime?.ids() || []) {
+      const element = this.runtime.element(id);
+      if (element instanceof HTMLVideoElement && element !== exceptElement && !element.paused) {
+        element.pause();
+      }
+    }
+  }
+
   pause() {
     if (!this.playing) return;
     this.playing = false;
-    this.video.pause();
+    const { element } = this.currentSource();
+    if (element instanceof HTMLVideoElement) element.pause();
+    this.pauseOthers(null);
     this.stopBgm();
     this.stopLoop();
     this.renderFrame();
@@ -127,10 +212,21 @@ export class TimelinePlayer {
       return;
     }
     this.clipIndex = mapped.clipIndex;
-    this.video.playbackRate = clamp(mapped.clip.speed || 1, 0.25, 8);
+    const asset = findAsset(project.assets, mapped.assetId);
+    const element = this.runtime?.element(mapped.assetId);
+
     this.seeking = true;
-    await this.setVideoTime(mapped.sourceTime);
+    if (asset?.kind === 'video' && element) {
+      element.playbackRate = clamp(mapped.clip.speed || 1, 0.25, 8);
+      this.pauseOthers(element);
+      await this.setVideoTime(element, mapped.sourceTime);
+      if (this.playing) await this.startVideo(element);
+    } else {
+      this.pauseOthers(null);
+    }
     this.seeking = false;
+    this.lastTick = performance.now();
+
     if (this.playing && this.bgmBuffer && !keepPlaying) {
       this.stopBgm();
       this.startBgm(t);
@@ -139,9 +235,9 @@ export class TimelinePlayer {
     this.onTime?.(this.timelineTime, total);
   }
 
-  setVideoTime(time) {
+  setVideoTime(element, time) {
     return new Promise((resolve) => {
-      if (Math.abs(this.video.currentTime - time) < 0.001) {
+      if (Math.abs(element.currentTime - time) < 0.001) {
         resolve();
         return;
       }
@@ -150,13 +246,13 @@ export class TimelinePlayer {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        this.video.removeEventListener('seeked', done);
+        element.removeEventListener('seeked', done);
         resolve();
       };
       const timer = setTimeout(done, 3000);
-      this.video.addEventListener('seeked', done, { once: true });
+      element.addEventListener('seeked', done, { once: true });
       try {
-        this.video.currentTime = time;
+        element.currentTime = time;
       } catch {
         done();
       }
@@ -185,25 +281,30 @@ export class TimelinePlayer {
       this.pause();
       return;
     }
+    const now = performance.now();
+    const dt = Math.min(0.25, Math.max(0, (now - this.lastTick) / 1000));
+    this.lastTick = now;
+
     const clip = laid[Math.min(this.clipIndex, laid.length - 1)];
+    const asset = findAsset(project.assets, clip.assetId);
+    const element = this.runtime?.element(clip.assetId);
+
     if (!this.seeking) {
-      const source = this.video.currentTime;
-      if (source >= clip.end - EPS) {
-        const next = laid[this.clipIndex + 1];
-        if (!next) {
-          this.timelineTime = clip.timelineEnd;
-          this.finish();
+      if (asset?.kind === 'video' && element) {
+        // 動画は要素の時刻を正とする（音とのずれが出ないため）
+        const source = element.currentTime;
+        if (source >= clip.end - EPS) {
+          this.advanceClip(laid, clip);
           return;
         }
-        this.clipIndex += 1;
-        this.timelineTime = next.timelineStart;
-        this.seeking = true;
-        this.video.playbackRate = clamp(next.speed || 1, 0.25, 8);
-        this.setVideoTime(next.start).then(() => {
-          this.seeking = false;
-        });
-      } else {
         this.timelineTime = clip.timelineStart + Math.max(0, source - clip.start) / (clip.speed || 1);
+      } else {
+        // 画像には時計が無いので実時間で進める
+        this.timelineTime += dt;
+        if (this.timelineTime >= clip.timelineEnd - EPS) {
+          this.advanceClip(laid, clip);
+          return;
+        }
       }
     }
     this.applyGains();
@@ -211,9 +312,40 @@ export class TimelinePlayer {
     this.onTime?.(this.timelineTime, timelineDuration(project.clips));
   }
 
+  /** 次のクリップへ進む（無ければ終了） */
+  advanceClip(laid, clip) {
+    const next = laid[this.clipIndex + 1];
+    if (!next) {
+      this.timelineTime = clip.timelineEnd;
+      this.finish();
+      return;
+    }
+    this.clipIndex += 1;
+    this.timelineTime = next.timelineStart;
+    this.seeking = true;
+    const project = this.getProject();
+    const asset = findAsset(project.assets, next.assetId);
+    const element = this.runtime?.element(next.assetId);
+    if (asset?.kind === 'video' && element) {
+      element.playbackRate = clamp(next.speed || 1, 0.25, 8);
+      this.pauseOthers(element);
+      this.setVideoTime(element, next.start).then(async () => {
+        if (this.playing) await this.startVideo(element);
+        this.seeking = false;
+        this.lastTick = performance.now();
+      });
+    } else {
+      this.pauseOthers(null);
+      this.seeking = false;
+      this.lastTick = performance.now();
+    }
+  }
+
   finish() {
     this.playing = false;
-    this.video.pause();
+    const { element } = this.currentSource();
+    if (element instanceof HTMLVideoElement) element.pause();
+    this.pauseOthers(null);
     this.stopBgm();
     this.stopLoop();
     this.renderFrame();
@@ -258,8 +390,14 @@ export class TimelinePlayer {
   /** 現在時刻のフレームを canvas へ描画する */
   renderFrame() {
     const project = this.getProject();
-    const { width, height } = this.canvas;
-    drawVideoFrame(this.ctx, this.video, width, height);
+    const { width, height } = this.syncCanvasSize();
+    const { element } = this.currentSource();
+
+    drawVideoFrame(this.ctx, element, width, height, {
+      fit: project.output?.fit,
+      background: project.output?.background,
+    });
+
     const cues = projectCuesToTimeline(project.subtitles, project.clips);
     const cue = cueAt(cues, this.timelineTime);
     if (cue && !cue.needsText) drawSubtitle(this.ctx, cue, project.subtitleStyle, width, height);
@@ -269,7 +407,8 @@ export class TimelinePlayer {
     this.pause();
     this.stopLoop();
     try {
-      this.mediaSource?.disconnect();
+      for (const node of this.mediaSources.values()) node?.disconnect();
+      this.mediaSources.clear();
       this.voiceGain.disconnect();
       this.bgmGain.disconnect();
       this.masterGain.disconnect();

@@ -4,13 +4,16 @@
  */
 
 import { THUMBNAIL_SIZE, rankThumbnailCandidates, suggestThumbnailTitle } from '../core/thumbnail.js';
+import { findAsset } from '../core/assets.js';
+import { resolveOutputSize } from '../core/layout.js';
+import { assetAnalysis } from '../core/project.js';
 import { clamp, describeError, formatTime } from '../core/util.js';
 import { drawThumbnail } from '../media/render.js';
 import { renderThumbnail } from '../media/exporter.js';
 import { button, emptyState, h, imeSafeInput, loading, select, toast, toggle } from './dom.js';
 import { shareFile } from '../media/share.js';
 
-export function createThumbnailEditor({ store, getThumbVideo, getSourceUrl }) {
+export function createThumbnailEditor({ store, getThumbElement, getAssetUrl }) {
   const preview = h('canvas.thumb-preview', {
     width: THUMBNAIL_SIZE.width,
     height: THUMBNAIL_SIZE.height,
@@ -36,11 +39,31 @@ export function createThumbnailEditor({ store, getThumbVideo, getSourceUrl }) {
     }, { label });
   }
 
+  /** サムネイルに使う素材の要素 */
+  function currentElement() {
+    const state = store.getState();
+    return getThumbElement(state.thumbnail.sourceAssetId) || null;
+  }
+
+  /** プレビュー canvas を出力の向きへ合わせる */
+  function syncPreviewSize() {
+    const state = store.getState();
+    const size = resolveOutputSize(state.output, state.media || { width: 1280, height: 720 });
+    const ratio = size.width / size.height;
+    const width = ratio >= 1 ? THUMBNAIL_SIZE.width : Math.round(THUMBNAIL_SIZE.height * ratio);
+    const height = ratio >= 1 ? Math.round(THUMBNAIL_SIZE.width / ratio) : THUMBNAIL_SIZE.height;
+    if (preview.width !== width || preview.height !== height) {
+      preview.width = width;
+      preview.height = height;
+    }
+  }
+
   function drawPreview() {
     const state = store.getState();
-    const video = getThumbVideo();
+    syncPreviewSize();
+    const video = currentElement();
     const ctx = preview.getContext('2d');
-    if (!video || !state.media) {
+    if (!video || !state.assets.length) {
       ctx.fillStyle = '#0b0e11';
       ctx.fillRect(0, 0, preview.width, preview.height);
       ctx.fillStyle = '#a7b4c2';
@@ -49,51 +72,64 @@ export function createThumbnailEditor({ store, getThumbVideo, getSourceUrl }) {
       ctx.fillText('素材を読み込むとプレビューされます', preview.width / 2, preview.height / 2);
       return;
     }
-    drawThumbnail(ctx, video, state.thumbnail, preview.width, preview.height);
+    drawThumbnail(ctx, video, state.thumbnail, preview.width, preview.height, {
+      fit: state.output?.fit === 'contain' ? 'contain' : 'cover',
+      background: state.output?.background,
+    });
   }
 
-  async function seekThumbVideo(time) {
-    const video = getThumbVideo();
-    if (!video) return;
+  async function seekThumbVideo(assetId, time) {
+    const element = getThumbElement(assetId);
+    if (!(element instanceof HTMLVideoElement)) return; // 画像はシーク不要
     await new Promise((resolve) => {
       const done = () => resolve();
-      video.addEventListener('seeked', done, { once: true });
+      element.addEventListener('seeked', done, { once: true });
       setTimeout(done, 2500);
       try {
-        video.currentTime = clamp(time, 0, Math.max(0, (video.duration || 0) - 0.05));
+        element.currentTime = clamp(time, 0, Math.max(0, (element.duration || 0) - 0.05));
       } catch {
         done();
       }
     });
   }
 
-  async function setSourceTime(time) {
+  async function setSource(assetId, time) {
     patch((thumb) => {
+      thumb.sourceAssetId = assetId;
       thumb.sourceTime = time;
     }, 'サムネイルの位置を変更');
-    await seekThumbVideo(time);
+    await seekThumbVideo(assetId, time);
     drawPreview();
   }
 
   async function buildCandidates() {
     const state = store.getState();
     if (busy) return;
-    const video = getThumbVideo();
-    if (!video || !state.media) {
-      toast('先に素材を読み込んでください。', { type: 'error' });
+    if (!state.assets.length) {
+      toast('先に素材を追加してください。', { type: 'error' });
       return;
     }
-    const frames = state.analysis.frames;
-    if (!frames.length) {
-      toast('先に解析を実行してください。候補の抽出にはフレーム解析が必要です。', { type: 'error' });
-      return;
+
+    // 動画は品質スコア上位のフレーム、画像はそのまま候補にする
+    const candidates = [];
+    for (const asset of state.assets) {
+      if (asset.kind === 'image') {
+        candidates.push({ assetId: asset.id, t: 0, score: 0.5, name: asset.name, isImage: true });
+        continue;
+      }
+      const frames = assetAnalysis(state, asset.id).frames;
+      if (!frames.length) continue;
+      const ranked = rankThumbnailCandidates(frames, assetAnalysis(state, asset.id).scenes, assetAnalysis(state, asset.id).speech, {
+        limit: 4,
+        duration: asset.duration,
+      });
+      for (const cand of ranked) candidates.push({ assetId: asset.id, t: cand.t, score: cand.score, name: asset.name, isImage: false });
     }
-    const ranked = rankThumbnailCandidates(frames, state.analysis.scenes, state.analysis.speech, {
-      limit: 8,
-      duration: state.media.duration,
-    });
-    if (!ranked.length) {
-      statusHost.replaceChildren(emptyState('候補が見つかりません', '解析結果が不足しています。再解析をお試しください。'));
+    candidates.sort((a, b) => b.score - a.score);
+    const picked = candidates.slice(0, 9);
+
+    if (!picked.length) {
+      statusHost.replaceChildren(emptyState('候補が見つかりません', '動画素材の解析を実行すると候補を抽出できます。'));
       return;
     }
 
@@ -103,41 +139,43 @@ export function createThumbnailEditor({ store, getThumbVideo, getSourceUrl }) {
     statusHost.replaceChildren(progress.element);
     candidateHost.replaceChildren();
 
-    const wasTime = video.currentTime;
     try {
-      for (let i = 0; i < ranked.length; i += 1) {
+      for (let i = 0; i < picked.length; i += 1) {
         if (token !== candidatesToken) return;
-        const cand = ranked[i];
-        await seekThumbVideo(cand.t);
+        const cand = picked[i];
+        const element = getThumbElement(cand.assetId);
+        if (!element) continue;
+        if (!cand.isImage) await seekThumbVideo(cand.assetId, cand.t);
+
         const canvas = h('canvas', { width: 256, height: 144 });
         const ctx = canvas.getContext('2d');
-        const scale = Math.min(256 / (video.videoWidth || 16), 144 / (video.videoHeight || 9));
-        const dw = (video.videoWidth || 16) * scale;
-        const dh = (video.videoHeight || 9) * scale;
+        const sw = element.videoWidth || element.naturalWidth || 16;
+        const sh = element.videoHeight || element.naturalHeight || 9;
+        const scale = Math.min(256 / sw, 144 / sh);
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, 256, 144);
         try {
-          ctx.drawImage(video, (256 - dw) / 2, (144 - dh) / 2, dw, dh);
+          ctx.drawImage(element, (256 - sw * scale) / 2, (144 - sh * scale) / 2, sw * scale, sh * scale);
         } catch {
           /* 描画できないフレームはスキップ表示 */
         }
+        const label = cand.isImage ? cand.name : `${cand.name} ${formatTime(cand.t)}`;
         const item = h('div.thumb-candidate', { attrs: { role: 'listitem' } }, [
           h('button.thumb-candidate__btn', {
             type: 'button',
-            attrs: {
-              'aria-label': `候補 ${i + 1}：${formatTime(cand.t)} を使用（スコア ${(cand.score * 100).toFixed(0)}）`,
-            },
-            on: { click: () => setSourceTime(cand.t) },
+            attrs: { 'aria-label': `候補 ${i + 1}：${label} を使用（スコア ${(cand.score * 100).toFixed(0)}）` },
+            on: { click: () => setSource(cand.assetId, cand.t) },
           }, [canvas]),
-          h('span.thumb-candidate__meta', { text: `${formatTime(cand.t)} / スコア ${(cand.score * 100).toFixed(0)}` }),
+          h('span.thumb-candidate__meta', { text: label }),
         ]);
         candidateHost.append(item);
-        progress.setRatio((i + 1) / ranked.length);
+        progress.setRatio((i + 1) / picked.length);
       }
       statusHost.replaceChildren();
-      await seekThumbVideo(store.getState().thumbnail.sourceTime || wasTime);
+      const current = store.getState().thumbnail;
+      await seekThumbVideo(current.sourceAssetId, current.sourceTime);
       drawPreview();
-      toast(`${ranked.length} 件の候補を生成しました。`, { type: 'success' });
+      toast(`${picked.length} 件の候補を生成しました。`, { type: 'success' });
     } catch (error) {
       statusHost.replaceChildren(h('p.alert.alert--error', { attrs: { role: 'alert' }, text: describeError(error) }));
     } finally {
@@ -147,13 +185,14 @@ export function createThumbnailEditor({ store, getThumbVideo, getSourceUrl }) {
 
   async function exportPng() {
     const state = store.getState();
-    const url = getSourceUrl();
+    const url = getAssetUrl(state.thumbnail.sourceAssetId);
     if (!url) {
-      toast('素材が読み込まれていません。', { type: 'error' });
+      toast('サムネイルに使う素材が読み込まれていません。', { type: 'error' });
       return;
     }
+    const asset = findAsset(state.assets, state.thumbnail.sourceAssetId);
     try {
-      const blob = await renderThumbnail(state, url);
+      const blob = await renderThumbnail(state, url, { isImage: asset?.kind === 'image' });
       const filename = `${sanitizeFilename(state.name)}_thumbnail.png`;
       const shared = await shareFile({ blob, filename, title: state.thumbnail.title || state.name });
       toast(
@@ -250,17 +289,17 @@ export function createThumbnailEditor({ store, getThumbVideo, getSourceUrl }) {
             toast('見出しを提案しました。', { type: 'success' });
           },
         }),
-        button('現在の再生位置を使う', {
+        button('表示を更新', {
           onClick: async () => {
-            const time = store.getState().thumbnail.sourceTime;
-            await setSourceTime(time);
+            const thumb = store.getState().thumbnail;
+            await setSource(thumb.sourceAssetId, thumb.sourceTime);
           },
-          attrs: { 'aria-label': '現在のサムネイル位置を再取得' },
+          attrs: { 'aria-label': 'サムネイルのプレビューを再描画' },
         }),
         button('📤 サムネを共有 / 保存', { variant: 'primary', onClick: exportPng }),
       ]),
       h('p.hint', {
-        text: `使用フレーム: ${formatTime(thumb.sourceTime, { ms: true })} / 出力サイズ 1280×720`,
+        text: `使用素材: ${findAsset(state.assets, thumb.sourceAssetId)?.name ?? '未選択'}｜位置 ${formatTime(thumb.sourceTime, { ms: true })}｜出力 ${preview.width}×${preview.height}`,
       }),
     );
   }
@@ -305,7 +344,8 @@ export function createThumbnailEditor({ store, getThumbVideo, getSourceUrl }) {
       renderControls();
       drawPreview();
     },
-    setSourceTime,
+    /** 外部（タイムライン等）から抽出位置を指定する */
+    setSource,
     dispose: unsubscribe,
   };
 }

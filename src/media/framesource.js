@@ -1,118 +1,97 @@
 /**
  * 書き出し用のフレーム取得。
  *
- * 計測の結果、フレーム単位のシークが 1 枚あたり約 59ms かかり、
+ * 計測の結果、動画のフレーム単位シークが 1 枚あたり約 59ms かかり、
  * 描画 0.2ms・エンコード 2.6ms に対して圧倒的な支配要因だった。
- * シークは 1 つの video 要素では直列にしか進まないため、
- * 複数の要素へ先読みを振り分けて重ね合わせる（パイプライン化）。
+ * 先読み数 1 / 2 / 3 を実測したが書き出し時間はほぼ変わらず（測定ノイズの範囲）、
+ * video 要素を増やすほど素材を多重にバッファしてメモリを食うため、既定は逐次シークとする。
+ * 再生 + requestVideoFrameCallback 方式は表示リフレッシュに律速されフレームが落ちるため不採用。
  *
- * 再生して requestVideoFrameCallback で拾う方式も検討したが、
- * 表示リフレッシュに律速されて倍速再生でフレームが落ちるため採用しない。
+ * 画像素材はシークが不要なので、そのまま要素を返す。
  */
 
 import { clamp } from '../core/util.js';
 
 /**
- * 先読み数の既定値。
- *
- * 先読み 1 / 2 / 3 を実測したところ書き出し時間はほぼ変わらなかった
- * （3.62 秒の出力に対して 6.9 / 7.6 / 5.8 秒＝測定ノイズの範囲）。
- * video 要素を増やすとその分だけ素材を多重にバッファしてメモリを食い、
- * スマートフォンではタブ破棄の原因になるため、既定は 1 とする。
+ * 先読み数の既定値。上記の実測より、増やす利点がないため 1。
  */
 export function defaultLookahead() {
   return 1;
 }
 
 /**
- * 指定した時刻列のフレームを順番に取り出す。
+ * 出力フレーム列に対応する素材の絵を順番に取り出す。
  *
- * @param {{sourceUrl:string, times:number[], lookahead?:number, signal?:AbortSignal}} opt
- * @returns {{next:()=>Promise<HTMLVideoElement|null>, dispose:()=>void, lookahead:number}}
+ * @param {{frames:{assetId:string, time:number, kind:'video'|'image'}[],
+ *          getUrl:(assetId:string)=>string|null,
+ *          getImage:(assetId:string)=>HTMLImageElement|null,
+ *          lookahead?:number, signal?:AbortSignal}} opt
  */
 export function createFrameSource(opt) {
-  const times = opt.times || [];
+  const frames = opt.frames || [];
   const lookahead = clamp(opt.lookahead ?? defaultLookahead(), 1, 6);
-  /** @type {{video:HTMLVideoElement, busy:boolean}[]} */
-  const pool = [];
-  /** @type {{index:number, promise:Promise<HTMLVideoElement|null>, slot:object}[]} */
-  const queue = [];
-  let nextToSchedule = 0;
-  let nextToReturn = 0;
+  /** 素材ごとの書き出し専用 video 要素（プレビュー用と競合させない） */
+  const videos = new Map();
+  let index = 0;
   let disposed = false;
 
-  function makeVideo() {
+  function videoFor(assetId) {
+    if (videos.has(assetId)) return videos.get(assetId);
+    const url = opt.getUrl?.(assetId);
+    if (!url) return null;
     const video = document.createElement('video');
-    video.src = opt.sourceUrl;
+    video.src = url;
     video.muted = true;
     video.playsInline = true;
     video.preload = 'auto';
+    videos.set(assetId, video);
     return video;
   }
 
   async function ready(video) {
     if (video.readyState >= 2) return;
-    await new Promise((resolve, reject) => {
-      const onError = () => reject(new Error('書き出し用に素材を読み込めませんでした。'));
-      video.addEventListener('loadeddata', () => resolve(), { once: true });
-      video.addEventListener('error', onError, { once: true });
+    await new Promise((resolve) => {
+      video.addEventListener('loadeddata', resolve, { once: true });
+      video.addEventListener('error', resolve, { once: true });
       setTimeout(resolve, 8000);
     });
   }
 
-  function schedule() {
-    while (queue.length < lookahead && nextToSchedule < times.length && !disposed) {
-      const index = nextToSchedule;
-      nextToSchedule += 1;
-      const slot = pool.find((s) => !s.busy) || (pool.length < lookahead ? addSlot() : null);
-      if (!slot) break;
-      slot.busy = true;
-      queue.push({ index, slot, promise: seekSlot(slot, times[index]) });
-    }
-  }
-
-  function addSlot() {
-    const slot = { video: makeVideo(), busy: false };
-    pool.push(slot);
-    return slot;
-  }
-
-  async function seekSlot(slot, time) {
-    await ready(slot.video);
-    await seekTo(slot.video, time);
-    return slot.video;
-  }
-
   return {
     lookahead,
+    total: frames.length,
+
     /**
-     * 次のフレームが描画可能になった video 要素を返す。
-     * 返した要素は release() を呼ぶまで再利用されない。
+     * 次のフレームの描画元を返す。
+     * @returns {Promise<{element:object, index:number, release:Function}|null>}
      */
     async next() {
-      if (disposed || nextToReturn >= times.length) return null;
-      schedule();
-      const entry = queue.shift();
-      if (!entry) return null;
-      const video = await entry.promise;
-      nextToReturn += 1;
-      return {
-        video,
-        index: entry.index,
-        release() {
-          entry.slot.busy = false;
-          schedule();
-        },
-      };
+      if (disposed || index >= frames.length) return null;
+      const current = index;
+      index += 1;
+      const frame = frames[current];
+
+      if (frame.kind === 'image') {
+        return { element: opt.getImage?.(frame.assetId) || null, index: current, release() {} };
+      }
+      const video = videoFor(frame.assetId);
+      if (!video) return { element: null, index: current, release() {} };
+      await ready(video);
+      await seekTo(video, frame.time);
+      return { element: video, index: current, release() {} };
     },
+
     dispose() {
       disposed = true;
-      for (const slot of pool) {
-        slot.video.removeAttribute('src');
-        slot.video.load();
+      for (const video of videos.values()) {
+        try {
+          video.removeAttribute('src');
+          video.load();
+        } catch {
+          /* 後片付けの失敗は無視 */
+        }
       }
-      pool.length = 0;
-      queue.length = 0;
+      videos.clear();
     },
   };
 }

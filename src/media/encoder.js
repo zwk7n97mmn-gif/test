@@ -16,6 +16,7 @@ import { timelineDuration, timelineToSource } from '../core/autoedit.js';
 import { cueAt } from '../core/subtitles.js';
 import { projectCuesToTimeline } from '../core/autoedit.js';
 import { clamp } from '../core/util.js';
+import { evenSize, resolveOutputSize } from '../core/layout.js';
 import { drawSubtitle, drawVideoFrame } from './render.js';
 import { decodeForExport, renderTimelineAudio, toPlanarBlocks } from './audio-offline.js';
 import { createFrameSource } from './framesource.js';
@@ -115,10 +116,6 @@ export function describeFormat(video, audio) {
   return `MP4 (${v} / ${audio.kind === 'opus' ? 'Opus' : 'AAC'})`;
 }
 
-function evenSize(value) {
-  return Math.max(2, Math.round(value / 2) * 2);
-}
-
 function estimateBitrate(width, height, fps) {
   return clamp(Math.round(width * height * fps * 0.08), 400000, 24000000);
 }
@@ -143,8 +140,13 @@ export async function renderWithCodecs(opt) {
   if (total <= 0) throw new Error('書き出す区間がありません。');
   if (opt.signal?.aborted) throw abortError();
 
-  const width = evenSize(opt.width || project.media?.width || 1280);
-  const height = evenSize(opt.height || project.media?.height || 720);
+  // 出力サイズは「向き」の設定から決める（横素材から縦動画も作れる）
+  const size = resolveOutputSize(
+    { ...project.output, maxSize: opt.maxSize ?? project.output?.maxSize },
+    project.media || { width: 1280, height: 720 },
+  );
+  const width = evenSize(size.width);
+  const height = evenSize(size.height);
   const fps = clamp(Math.round(opt.fps || project.media?.fps || 30), 1, 60);
 
   const progress = (ratio, phase, detail = '') => opt.onProgress?.({ ratio: clamp(ratio, 0, 1), phase, detail });
@@ -184,13 +186,24 @@ export async function renderWithCodecs(opt) {
   const cues = projectCuesToTimeline(project.subtitles, project.clips);
   const totalFrames = Math.max(1, Math.round(total * fps));
 
-  // 各出力フレームに対応する素材内の時刻をあらかじめ求めておく
-  const sourceTimes = [];
+  // 各出力フレームが「どの素材の何秒か」をあらかじめ求めておく
+  const assetKind = new Map((project.assets || []).map((a) => [a.id, a.kind]));
+  const frames = [];
   for (let index = 0; index < totalFrames; index += 1) {
     const mapped = timelineToSource(project.clips, Math.min(index / fps, total - 1e-4));
-    sourceTimes.push(mapped ? mapped.sourceTime : 0);
+    frames.push({
+      assetId: mapped?.assetId ?? null,
+      time: mapped?.sourceTime ?? 0,
+      kind: assetKind.get(mapped?.assetId) === 'image' ? 'image' : 'video',
+    });
   }
-  const frameSource = createFrameSource({ sourceUrl: opt.sourceUrl, times: sourceTimes, lookahead: opt.lookahead, signal: opt.signal });
+  const frameSource = createFrameSource({
+    frames,
+    getUrl: (assetId) => opt.getAssetUrl?.(assetId) || null,
+    getImage: (assetId) => opt.getAssetImage?.(assetId) || null,
+    lookahead: opt.lookahead,
+    signal: opt.signal,
+  });
 
   let encoderError = null;
   const videoEncoder = new VideoEncoder({
@@ -222,6 +235,7 @@ export async function renderWithCodecs(opt) {
   if (capability.video.kind === 'avc') videoConfig.avc = { format: 'avc' };
   videoEncoder.configure(videoConfig);
 
+  const framing = { fit: project.output?.fit, background: project.output?.background };
   const keyframeEvery = Math.max(1, Math.round(fps * KEYFRAME_INTERVAL_SEC));
   try {
     for (;;) {
@@ -230,12 +244,12 @@ export async function renderWithCodecs(opt) {
 
       const entry = await frameSource.next();
       if (!entry) break;
-      const { video, index, release } = entry;
+      const { element, index, release } = entry;
 
-      drawVideoFrame(ctx, video, width, height);
+      drawVideoFrame(ctx, element, width, height, framing);
       const cue = cueAt(cues, index / fps);
       if (cue && !cue.needsText) drawSubtitle(ctx, cue, project.subtitleStyle, width, height);
-      release(); // 先読みを再開させる
+      release();
 
       const frame = new VideoFrame(canvas, {
         timestamp: Math.round((index * 1e6) / fps),
@@ -287,45 +301,54 @@ export async function renderWithCodecs(opt) {
       mimeType: 'video/mp4',
     },
     durationSec,
+    width,
+    height,
     notice: audio.notice,
   };
 }
 
-/** 素材音声をデコードし、タイムライン音声を生成する */
+/**
+ * 素材ごとの音声をデコードし、タイムライン音声を生成する。
+ * 画像や音声を持たない素材はそのぶん無音になる。
+ */
 async function prepareAudio(opt, project, total) {
-  let sourceBuffer = null;
-  let notice = '';
-  const needsSource = project.media?.hasAudio !== false;
+  const buffersByAsset = {};
+  const notices = [];
 
-  if (needsSource) {
+  for (const asset of project.assets || []) {
+    if (asset.kind !== 'video' || !asset.hasAudio) continue;
+    const file = opt.getAssetFile?.(asset.id);
+    const url = opt.getAssetUrl?.(asset.id);
+    if (!file && !url) continue;
     try {
-      const arrayBuffer = opt.sourceFile
-        ? await opt.sourceFile.arrayBuffer()
-        : await (await fetch(opt.sourceUrl)).arrayBuffer();
+      const arrayBuffer = file ? await file.arrayBuffer() : await (await fetch(url)).arrayBuffer();
       const decoded = await decodeForExport(arrayBuffer);
-      sourceBuffer = decoded.buffer;
-      if (!sourceBuffer) notice = decoded.reason;
+      if (decoded.buffer) buffersByAsset[asset.id] = decoded.buffer;
+      else if (decoded.reason) notices.push(`${asset.name}: ${decoded.reason}`);
     } catch {
-      notice = 'メモリ不足のため音声を読み込めませんでした。解像度か長さを下げてお試しください。';
+      notices.push(`${asset.name}: メモリ不足のため音声を読み込めませんでした。`);
     }
   }
 
-  if (!sourceBuffer && !opt.bgmBuffer) return { buffer: null, notice };
+  const hasAny = Object.keys(buffersByAsset).length > 0;
+  if (!hasAny && !opt.bgmBuffer) return { buffer: null, notice: notices.join(' / ') };
 
   try {
     const buffer = await renderTimelineAudio({
       project,
-      sourceBuffer,
+      buffersByAsset,
       bgmBuffer: opt.bgmBuffer || null,
-      sampleRate: sourceBuffer?.sampleRate || opt.bgmBuffer?.sampleRate || 48000,
-      channels: Math.max(1, Math.min(2, sourceBuffer?.numberOfChannels || 2)),
+      plan: opt.audioPlan,
+      sampleRate: Object.values(buffersByAsset)[0]?.sampleRate || opt.bgmBuffer?.sampleRate || 48000,
+      channels: 2,
     });
     void total;
-    return { buffer, notice };
+    return { buffer, notice: notices.join(' / ') };
   } catch {
     return { buffer: null, notice: '音声の合成に失敗したため、映像のみ書き出します。' };
   }
 }
+
 
 async function encodeAudio({ buffer, codec, muxer, signal, onProgress }) {
   let encoderError = null;

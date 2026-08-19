@@ -7,7 +7,7 @@
  */
 
 import { buildAudioPlan } from '../core/audio.js';
-import { layoutClips, projectCuesToTimeline, timelineDuration } from '../core/autoedit.js';
+import { layoutClips, timelineDuration } from '../core/autoedit.js';
 import { clamp, dbToGain } from '../core/util.js';
 
 export const EXPORT_SAMPLE_RATES = [48000, 44100, 24000];
@@ -48,39 +48,40 @@ export async function decodeForExport(arrayBuffer, rates = EXPORT_SAMPLE_RATES) 
 /**
  * クリップ・音量・ダッキング・フェードを適用した完成音声をレンダリングする。
  *
- * @param {{project:object, sourceBuffer:AudioBuffer|null, bgmBuffer:AudioBuffer|null,
- *          sampleRate?:number, channels?:number}} opt
+ * 素材ごとに音声バッファを受け取り、クリップの参照先に応じて並べる。
+ * 画像素材や音声を持たない素材のクリップは、そのぶん無音として残る。
+ *
+ * @param {{project:object, buffersByAsset:Record<string,AudioBuffer>, bgmBuffer:AudioBuffer|null,
+ *          sampleRate?:number, channels?:number, plan?:object}} opt
  * @returns {Promise<AudioBuffer|null>}
  */
 export async function renderTimelineAudio(opt) {
   const project = opt.project;
   const total = timelineDuration(project.clips);
   if (total <= 0) return null;
-  if (!opt.sourceBuffer && !opt.bgmBuffer) return null;
+  const buffers = opt.buffersByAsset || {};
+  const anyBuffer = Object.values(buffers).find(Boolean) || null;
+  if (!anyBuffer && !opt.bgmBuffer) return null;
 
   const Ctor = window.OfflineAudioContext || window.webkitOfflineAudioContext;
   if (!Ctor) return null;
 
-  const sampleRate = opt.sampleRate || opt.sourceBuffer?.sampleRate || 48000;
-  const channels = clamp(opt.channels || Math.max(1, opt.sourceBuffer?.numberOfChannels || 2), 1, 2);
+  const sampleRate = opt.sampleRate || anyBuffer?.sampleRate || opt.bgmBuffer?.sampleRate || 48000;
+  const channels = clamp(opt.channels || Math.max(1, anyBuffer?.numberOfChannels || 2), 1, 2);
   const frames = Math.ceil(total * sampleRate);
   const ctx = new Ctor(channels, frames, sampleRate);
 
-  const speechTimeline = projectCuesToTimeline(
-    project.analysis.speech.map((s, i) => ({ id: `sp${i}`, ...s })),
-    project.clips,
-  );
-  const plan = buildAudioPlan(project.audio, project.analysis.loudness, speechTimeline, total);
+  const plan = opt.plan || buildAudioPlan(project.audio, { integratedDb: -70, peakDb: -100 }, [], total);
 
   const master = ctx.createGain();
   master.connect(ctx.destination);
   applyFades(master.gain, plan, total, ctx.currentTime);
 
-  if (opt.sourceBuffer) {
+  if (anyBuffer) {
     const voice = ctx.createGain();
     voice.gain.value = dbToGain(plan.normalizeGainDb);
     voice.connect(master);
-    scheduleClips(ctx, opt.sourceBuffer, project.clips, voice);
+    scheduleClips(ctx, buffers, project.clips, voice);
   }
 
   if (opt.bgmBuffer) {
@@ -98,13 +99,15 @@ export async function renderTimelineAudio(opt) {
   return ctx.startRendering();
 }
 
-/** 各クリップを素材バッファから切り出してタイムライン上に並べる */
-function scheduleClips(ctx, sourceBuffer, clips, destination) {
+/** 各クリップを、参照先の素材バッファから切り出してタイムライン上に並べる */
+function scheduleClips(ctx, buffersByAsset, clips, destination) {
   for (const clip of layoutClips(clips)) {
-    const sourceLength = clip.end - clip.start;
+    const buffer = buffersByAsset[clip.assetId];
+    if (!buffer) continue; // 画像・音声なしの素材はそのぶん無音になる
+    const sourceLength = Math.min(clip.end, buffer.duration) - clip.start;
     if (sourceLength <= 0) continue;
     const node = ctx.createBufferSource();
-    node.buffer = sourceBuffer;
+    node.buffer = buffer;
     node.playbackRate.value = clamp(clip.speed || 1, 0.25, 8);
     node.connect(destination);
     // start(開始位置, 素材内オフセット, 素材内の長さ)
