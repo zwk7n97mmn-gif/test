@@ -1,0 +1,48 @@
+name: AI アシスタント
+
+# Issue に help-AI ラベルを付けると、公式の Claude Code Action が
+# リポジトリを読んで返信する。続けて聞きたいときは @claude 付きでコメントする。
+#
+# 認証は CLAUDE_CODE_OAUTH_TOKEN (Claude サブスクリプション) で行う。
+# API キーではないため、従量課金は発生せずプランの枠内で動く。
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read      # 資料を読むだけ。リポジトリは書き換えさせない
+  issues: write       # 返信コメントを書く
+  id-token: write     # Action の既定の GitHub App 認証に必要
+  actions: read       # CI の結果を読めるようにする
+
+# 同じ Issue で 2 つ走ると返信が二重になるため直列化する。
+concurrency:
+  group: ai-assist-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  respond:
+    # 無関係なラベルやコメントでランナーを起動しないための足切り。
+    # Action 側でもラベル名とトリガー語を再確認している。
+    if: >-
+      (github.event_name == 'issues' && github.event.label.name == 'help-AI') ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          # API キー (anthropic_api_key) ではなくこちらを使うことが重要。
+          # OAuth トークンで認証した実行は、API 課金ではなくサブスクの枠を使う。
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # 既定は "claude"。このリポジトリでは help-AI に合わせる。
+          label_trigger: "help-AI"
+          claude_args: |
+            --max-turns 10

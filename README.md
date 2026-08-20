@@ -1,7 +1,7 @@
 # 心理学の豆知識アカウント
 
 心理学の研究知見を、Bluesky と X に **1 日 2 回（8:00 / 21:00 JST）** 自動投稿します。
-サーバー不要、依存パッケージゼロ、GitHub Actions だけで動きます。
+サーバー不要、GitHub Actions だけで動きます。
 
 ## 状態
 
@@ -38,6 +38,17 @@ GitHub Actions (cron: 23:00 / 12:00 UTC)
 180 件を一巡するまで同じ内容は出ず、一巡すると順序を変えて次の巡回に入ります。
 順序は巡回番号から決定的に生成されるため、状態ファイルが壊れても復元できます。
 
+詳しくは [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+
+## Issue で AI に質問できます
+
+Issue を立てて **`help-AI`** ラベルを付けると、このリポジトリを読んだ Claude が
+コメントで答えます。続けて聞くときはコメントに `@claude` を付けます。
+
+公式の [Claude Code Action](https://github.com/anthropics/claude-code-action) を
+**Claude サブスクリプションの認証**で動かすため、API の従量課金は発生しません。
+セットアップ・費用・止め方は [docs/AI-ASSISTANT.md](docs/AI-ASSISTANT.md)。
+
 ## ディレクトリ
 
 ```
@@ -51,9 +62,19 @@ src/              投稿ロジック
   state.py          投稿履歴
 tests/            検証とテスト
 state/posted.json 投稿履歴（自動更新）
-docs/SETUP.md     セットアップ手順
-docs/EDITORIAL.md 編集方針・除外した俗説の一覧
+docs/             ドキュメント一式 → docs/README.md が索引
+CLAUDE.md         AI に渡すリポジトリの前提と答え方
 ```
+
+## ドキュメント
+
+| 読みたいこと | ファイル |
+|---|---|
+| 動かすまでの手順 | [docs/SETUP.md](docs/SETUP.md) |
+| 運用・止め方・困ったとき | [docs/OPERATIONS.md](docs/OPERATIONS.md) |
+| 設計 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| 豆知識の書き方・除外した俗説 | [docs/EDITORIAL.md](docs/EDITORIAL.md) |
+| Issue の AI アシスタント | [docs/AI-ASSISTANT.md](docs/AI-ASSISTANT.md) |
 
 ## 手元で試す
 
