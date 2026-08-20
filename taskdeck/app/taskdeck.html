@@ -1,0 +1,1654 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TaskDeck — タスク管理</title>
+<meta name="description" content="インストール不要・データはこの端末だけ。1ファイルで完結するタスク管理ツール。">
+<style>
+:root{
+  --bg:#f5f6f8; --panel:#ffffff; --panel-2:#fbfbfd; --line:#e2e5ea; --line-strong:#cfd4dc;
+  --text:#1c2027; --muted:#6b7280; --faint:#9aa1ac;
+  --accent:#2f6df6; --accent-soft:#e8effe; --accent-text:#ffffff;
+  --danger:#d64545; --danger-soft:#fdecec;
+  --warn:#b7791f; --warn-soft:#fdf3e0;
+  --ok:#1f8a5b; --ok-soft:#e6f5ee;
+  --shadow:0 1px 2px rgba(17,24,39,.06), 0 8px 24px rgba(17,24,39,.08);
+  --radius:10px;
+}
+html[data-theme="dark"]{
+  --bg:#12151a; --panel:#191d24; --panel-2:#1f242c; --line:#2b313a; --line-strong:#3a424e;
+  --text:#e6e9ee; --muted:#9aa3b0; --faint:#6f7885;
+  --accent:#5b8dff; --accent-soft:#1c2740; --accent-text:#0d1117;
+  --danger:#f07171; --danger-soft:#3a2224;
+  --warn:#e0b155; --warn-soft:#3a2f1c;
+  --ok:#57c99a; --ok-soft:#16302a;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Yu Gothic UI",Meiryo,sans-serif;
+  font-size:14px; line-height:1.6; -webkit-font-smoothing:antialiased;
+}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:none;padding:0}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:4px}
+
+/* ---------- 骨格 ---------- */
+#app{display:grid;grid-template-columns:236px 1fr;grid-template-rows:auto auto 1fr;height:100%;min-height:0}
+header.topbar{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;letter-spacing:.02em;white-space:nowrap}
+.brand .mark{width:22px;height:22px;border-radius:6px;background:linear-gradient(140deg,var(--accent),#8b5cf6);display:grid;place-items:center;color:#fff;font-size:12px;font-weight:800}
+.brand .edition{font-size:11px;font-weight:600;color:var(--muted);border:1px solid var(--line-strong);border-radius:999px;padding:1px 8px}
+.search{flex:1;max-width:420px;position:relative}
+.search input{width:100%;padding:7px 12px 7px 32px;border:1px solid var(--line-strong);border-radius:999px;background:var(--panel-2)}
+.search svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--faint)}
+.topbar .spacer{flex:1}
+.iconbtn{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--muted)}
+.iconbtn:hover{background:var(--panel-2);color:var(--text)}
+
+aside.sidebar{background:var(--panel);border-right:1px solid var(--line);padding:12px 10px;overflow-y:auto;min-height:0}
+.side-title{font-size:11px;font-weight:700;color:var(--faint);letter-spacing:.08em;margin:14px 8px 6px}
+.side-title:first-child{margin-top:0}
+.navitem{display:flex;align-items:center;gap:8px;width:100%;padding:6px 8px;border-radius:8px;color:var(--muted);text-align:left}
+.navitem:hover{background:var(--panel-2);color:var(--text)}
+.navitem.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.navitem .count{margin-left:auto;font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums}
+.navitem.active .count{color:var(--accent)}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.project-row{display:flex;align-items:center;gap:4px}
+.project-row .navitem{flex:1;min-width:0}
+.project-row .navitem span.name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-row .edit{opacity:0;width:24px;height:24px;border-radius:6px;display:grid;place-items:center;color:var(--faint)}
+.project-row:hover .edit{opacity:1}
+.project-row .edit:hover{background:var(--panel-2);color:var(--text)}
+.addlink{display:flex;align-items:center;gap:6px;padding:6px 8px;color:var(--faint);font-size:13px;border-radius:8px;width:100%}
+.addlink:hover{background:var(--panel-2);color:var(--accent)}
+
+main.content{display:flex;flex-direction:column;min-width:0;min-height:0}
+.contenthead{padding:14px 20px 0;display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.contenthead h1{margin:0;font-size:19px;letter-spacing:.01em}
+.contenthead .sub{color:var(--muted);font-size:12px;padding-bottom:3px}
+.contenthead .spacer{flex:1}
+.viewtabs{display:flex;gap:2px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:2px}
+.viewtabs button{padding:4px 12px;border-radius:6px;font-size:13px;color:var(--muted)}
+.viewtabs button.active{background:var(--panel);color:var(--text);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+
+.quickadd{margin:12px 20px 0;display:flex;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--line-strong);border-radius:var(--radius);padding:8px 10px;box-shadow:var(--shadow)}
+.quickadd input{flex:1;border:none;background:none;outline:none;font-size:14px}
+.quickadd .hint{font-size:11px;color:var(--faint);white-space:nowrap}
+.btn{padding:6px 14px;border-radius:8px;border:1px solid var(--line-strong);background:var(--panel-2);font-size:13px;font-weight:600;color:var(--text)}
+.btn:hover{border-color:var(--faint)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn.ghost{background:none;border-color:transparent;color:var(--muted);font-weight:500}
+.btn.ghost:hover{background:var(--panel-2);color:var(--text)}
+.btn.danger{color:var(--danger);border-color:var(--danger);background:var(--danger-soft)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+.scroller{flex:1;min-height:0;overflow:auto;padding:14px 20px 40px}
+
+/* ---------- ボード ---------- */
+.board{display:grid;grid-template-columns:repeat(3,minmax(240px,1fr));gap:14px;align-items:start}
+.column{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);min-height:120px;display:flex;flex-direction:column}
+.column.dragover{border-color:var(--accent);background:var(--accent-soft)}
+.colhead{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);font-weight:700;font-size:13px}
+.colhead .count{margin-left:auto;font-size:11px;color:var(--faint);background:var(--panel-2);border-radius:999px;padding:1px 8px;font-variant-numeric:tabular-nums}
+.collist{padding:8px;display:flex;flex-direction:column;gap:8px;min-height:60px}
+
+.card{background:var(--panel-2);border:1px solid var(--line);border-left-width:3px;border-radius:8px;padding:9px 10px;cursor:pointer;position:relative}
+.card:hover{border-color:var(--line-strong)}
+.card.selected{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.card.dragging{opacity:.4}
+.card .title{font-weight:600;overflow-wrap:anywhere}
+.card.done .title{text-decoration:line-through;color:var(--muted)}
+.card .meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
+.chip{font-size:11px;padding:1px 7px;border-radius:999px;border:1px solid var(--line-strong);color:var(--muted);background:var(--panel);white-space:nowrap}
+.chip.due{border-color:transparent;background:var(--panel);color:var(--muted)}
+.chip.due.today{background:var(--warn-soft);color:var(--warn)}
+.chip.due.over{background:var(--danger-soft);color:var(--danger)}
+.chip.tag{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.chip.prj{border-color:transparent}
+.chip.sub{font-variant-numeric:tabular-nums}
+.check{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--line-strong);display:grid;place-items:center;
+  color:transparent;background:var(--panel);font-size:11px;line-height:1}
+.check:hover{border-color:var(--ok);color:var(--ok)}
+.card .check{position:absolute;top:8px;right:8px}
+.card.done .check,tr.done .check{background:var(--ok);border-color:var(--ok);color:#fff}
+.card .title{padding-right:22px}
+
+/* ---------- リスト ---------- */
+table.list{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+table.list th{font-size:11px;color:var(--faint);text-align:left;font-weight:700;letter-spacing:.06em;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;cursor:pointer;user-select:none}
+table.list th:hover{color:var(--text)}
+table.list td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+table.list tr:last-child td{border-bottom:none}
+table.list tbody tr{cursor:pointer}
+table.list tbody tr:hover{background:var(--panel-2)}
+table.list tbody tr.selected{background:var(--accent-soft)}
+td.c-title{width:50%;overflow-wrap:anywhere;font-weight:600}
+tr.done td.c-title{text-decoration:line-through;color:var(--muted)}
+td.c-check{width:28px}
+.prio{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700}
+.prio.p1{color:var(--danger)} .prio.p2{color:var(--warn)} .prio.p3{color:var(--faint)}
+
+.empty{text-align:center;color:var(--faint);padding:56px 20px}
+.empty .big{font-size:15px;color:var(--muted);margin-bottom:4px}
+
+/* ---------- 詳細パネル ---------- */
+.drawer{position:fixed;top:0;right:0;height:100%;width:380px;max-width:100%;background:var(--panel);border-left:1px solid var(--line);box-shadow:var(--shadow);transform:translateX(102%);transition:transform .18s ease;display:flex;flex-direction:column;z-index:40}
+.drawer.open{transform:none}
+.drawer header{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.drawer header .ttl{font-weight:700;font-size:13px;color:var(--muted)}
+.drawer .body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:14px}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:11px;font-weight:700;color:var(--faint);letter-spacing:.06em}
+.field input[type=text],.field input[type=date],.field select,.field textarea{
+  width:100%;padding:7px 9px;border:1px solid var(--line-strong);border-radius:8px;background:var(--panel-2)}
+.field textarea{min-height:96px;resize:vertical;line-height:1.7}
+.field .row{display:flex;gap:8px}
+.field .row>*{flex:1;min-width:0}
+.taginput{display:flex;flex-wrap:wrap;gap:6px;padding:5px;border:1px solid var(--line-strong);border-radius:8px;background:var(--panel-2)}
+.taginput .chip{display:inline-flex;align-items:center;gap:4px}
+.taginput .chip button{color:var(--faint);font-size:13px;line-height:1}
+.taginput input{flex:1;min-width:90px;border:none;background:none;outline:none;padding:2px}
+.subtasks{display:flex;flex-direction:column;gap:4px}
+.subtask{display:flex;align-items:center;gap:7px;padding:3px 2px}
+.subtask input[type=checkbox]{width:15px;height:15px;accent-color:var(--ok);flex:none}
+.subtask .txt{flex:1;border:none;background:none;outline:none;padding:2px 3px;border-radius:5px}
+.subtask .txt:focus{background:var(--panel-2)}
+.subtask.done .txt{text-decoration:line-through;color:var(--muted)}
+.subtask .del{color:var(--faint);opacity:0;width:22px;height:22px;border-radius:5px}
+.subtask:hover .del{opacity:1}
+.subtask .del:hover{color:var(--danger);background:var(--danger-soft)}
+.progress{height:4px;border-radius:999px;background:var(--line);overflow:hidden;margin-top:4px}
+.progress i{display:block;height:100%;background:var(--ok);transition:width .2s}
+.drawer footer{border-top:1px solid var(--line);padding:10px 12px;display:flex;gap:8px;align-items:center}
+.drawer footer .stamp{font-size:11px;color:var(--faint);margin-left:auto;text-align:right;line-height:1.4;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---------- モーダル・トースト ---------- */
+.overlay{position:fixed;inset:0;background:rgba(15,18,24,.45);display:none;place-items:center;z-index:50;padding:16px}
+.overlay.open{display:grid}
+.modal{background:var(--panel);border-radius:14px;box-shadow:var(--shadow);width:min(520px,100%);max-height:90vh;display:flex;flex-direction:column}
+.modal header{padding:14px 18px;border-bottom:1px solid var(--line);font-weight:700}
+.modal .body{padding:18px;overflow-y:auto;display:flex;flex-direction:column;gap:14px}
+.modal footer{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.modal p.note{margin:0;color:var(--muted);font-size:13px}
+.keytext{width:100%;min-height:110px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;padding:9px;border:1px solid var(--line-strong);border-radius:8px;background:var(--panel-2);resize:vertical;word-break:break-all}
+.statusline{font-size:13px;padding:9px 11px;border-radius:8px;display:none}
+.statusline.show{display:block}
+.statusline.ok{background:var(--ok-soft);color:var(--ok)}
+.statusline.ng{background:var(--danger-soft);color:var(--danger)}
+.licensebox{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:11px 13px;font-size:13px;display:flex;flex-direction:column;gap:3px}
+.licensebox b{font-size:13px}
+.kbdlist{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px;align-items:center}
+kbd{font-family:inherit;font-size:11px;font-weight:700;border:1px solid var(--line-strong);border-bottom-width:2px;border-radius:5px;padding:1px 6px;background:var(--panel-2);white-space:nowrap}
+
+.trialbar{grid-column:1/-1;display:none;align-items:center;gap:10px;padding:7px 16px;background:var(--warn-soft);color:var(--warn);font-size:13px;border-bottom:1px solid var(--line)}
+.trialbar.show{display:flex}
+.trialbar .spacer{flex:1}
+.trialbar button{font-weight:700;color:inherit;text-decoration:underline}
+
+#toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,calc(100% + 40px));background:#1f242c;color:#f3f5f8;padding:9px 14px;border-radius:999px;box-shadow:var(--shadow);display:flex;align-items:center;gap:12px;font-size:13px;z-index:60;transition:transform .2s ease}
+#toast.show{transform:translate(-50%,0)}
+#toast button{color:#8fb4ff;font-weight:700}
+
+@media (max-width:860px){
+  #app{grid-template-columns:1fr}
+  .contenthead{padding-top:12px}
+  aside.sidebar{display:none}
+  aside.sidebar.open{display:block;position:fixed;top:0;left:0;bottom:0;width:240px;z-index:45}
+  .board{grid-template-columns:1fr}
+  .drawer{width:100%}
+}
+@media print{
+  aside.sidebar,header.topbar,.quickadd,.viewtabs,.drawer,#toast,.trialbar{display:none !important}
+  #app{display:block}
+  .scroller{overflow:visible;padding:0}
+  body{background:#fff}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <button class="iconbtn" id="menuBtn" title="メニュー" aria-label="メニュー">☰</button>
+    <div class="brand"><span class="mark">T</span>TaskDeck<span class="edition" id="editionTag">評価版</span></div>
+    <div class="search">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+      <input id="searchInput" type="search" placeholder="タスクを検索  ( / )" aria-label="タスクを検索">
+    </div>
+    <div class="spacer"></div>
+    <button class="iconbtn" id="themeBtn" title="表示テーマを切り替える" aria-label="表示テーマを切り替える">◐</button>
+    <button class="iconbtn" id="helpBtn" title="キーボード操作" aria-label="キーボード操作">?</button>
+    <button class="iconbtn" id="dataBtn" title="データの保存と読み込み" aria-label="データの保存と読み込み">⇅</button>
+    <button class="btn" id="licenseBtn">ライセンス</button>
+  </header>
+
+  <div class="trialbar" id="trialBar">
+    <span id="trialText">評価版です。タスクは 30 件まで保存できます。</span>
+    <span class="spacer"></span>
+    <button id="trialActivate">ライセンスキーを入力する</button>
+  </div>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="side-title">ビュー</div>
+    <nav id="smartNav"></nav>
+    <div class="side-title">プロジェクト</div>
+    <nav id="projectNav"></nav>
+    <button class="addlink" id="addProjectBtn">＋ プロジェクトを追加</button>
+    <div class="side-title">タグ</div>
+    <nav id="tagNav"></nav>
+  </aside>
+
+  <main class="content">
+    <div class="contenthead">
+      <h1 id="viewTitle">今日</h1>
+      <span class="sub" id="viewSub"></span>
+      <span class="spacer"></span>
+      <div class="viewtabs" role="tablist">
+        <button data-mode="board" role="tab">ボード</button>
+        <button data-mode="list" role="tab">リスト</button>
+      </div>
+    </div>
+
+    <form class="quickadd" id="quickAddForm" autocomplete="off">
+      <span style="color:var(--faint)">＋</span>
+      <input id="quickAddInput" type="text" placeholder="タスクを入力して Enter    例）請求書を送る #経理 !1 @明日" aria-label="タスクを追加">
+      <span class="hint">#タグ　!1〜3　@今日/明日/8-31</span>
+    </form>
+
+    <div class="scroller" id="scroller"></div>
+  </main>
+</div>
+
+<!-- 詳細パネル -->
+<section class="drawer" id="drawer" aria-label="タスクの詳細">
+  <header>
+    <span class="ttl">タスクの詳細</span>
+    <span class="spacer" style="flex:1"></span>
+    <button class="iconbtn" id="drawerClose" title="閉じる ( Esc )" aria-label="閉じる">✕</button>
+  </header>
+  <div class="body">
+    <div class="field">
+      <label for="dTitle">タイトル</label>
+      <input id="dTitle" type="text">
+    </div>
+    <div class="field">
+      <div class="row">
+        <div class="field"><label for="dStatus">状態</label>
+          <select id="dStatus">
+            <option value="todo">未着手</option>
+            <option value="doing">進行中</option>
+            <option value="done">完了</option>
+          </select>
+        </div>
+        <div class="field"><label for="dPriority">優先度</label>
+          <select id="dPriority">
+            <option value="1">高</option>
+            <option value="2">中</option>
+            <option value="3">低</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="field">
+      <div class="row">
+        <div class="field"><label for="dDue">期限</label><input id="dDue" type="date"></div>
+        <div class="field"><label for="dProject">プロジェクト</label><select id="dProject"></select></div>
+      </div>
+    </div>
+    <div class="field">
+      <label for="dTagInput">タグ</label>
+      <div class="taginput" id="dTags">
+        <input id="dTagInput" type="text" placeholder="入力して Enter">
+      </div>
+    </div>
+    <div class="field">
+      <label>サブタスク <span id="dSubCount" style="color:var(--faint);font-weight:600"></span></label>
+      <div class="subtasks" id="dSubtasks"></div>
+      <div class="progress"><i id="dProgress" style="width:0"></i></div>
+      <button class="addlink" id="dAddSub" type="button">＋ サブタスクを追加</button>
+    </div>
+    <div class="field">
+      <label for="dNotes">メモ</label>
+      <textarea id="dNotes" placeholder="手順・リンク・議事メモなど"></textarea>
+    </div>
+  </div>
+  <footer>
+    <button class="btn danger" id="dDelete">削除</button>
+    <span class="stamp" id="dStamp"></span>
+  </footer>
+</section>
+
+<!-- ライセンス -->
+<div class="overlay" id="licenseModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="licenseTitle">
+    <header id="licenseTitle">ライセンス</header>
+    <div class="body">
+      <div class="licensebox" id="licenseState"></div>
+      <div class="field">
+        <label for="licenseKey">ライセンスキー</label>
+        <textarea class="keytext" id="licenseKey" placeholder="TD1.〜 で始まるキーを貼り付けてください" spellcheck="false"></textarea>
+      </div>
+      <div class="statusline" id="licenseStatus"></div>
+      <p class="note">ライセンスキーはこの端末のブラウザにだけ保存されます。認証のための通信は一切行いません。</p>
+    </div>
+    <footer>
+      <button class="btn ghost" id="licenseRemove">登録を解除</button>
+      <span style="flex:1"></span>
+      <button class="btn" data-close="licenseModal">閉じる</button>
+      <button class="btn primary" id="licenseApply">登録する</button>
+    </footer>
+  </div>
+</div>
+
+<!-- データ -->
+<div class="overlay" id="dataModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dataTitle">
+    <header id="dataTitle">データの保存と読み込み</header>
+    <div class="body">
+      <p class="note">タスクはこのブラウザの中だけに保存されています。端末を移るときや、万一に備えるときは JSON ファイルとして書き出してください。</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <button class="btn" id="exportJson">JSON で書き出す</button>
+        <button class="btn" id="exportCsv">CSV で書き出す</button>
+        <button class="btn" id="importBtn">JSON を読み込む</button>
+        <button class="btn" id="printBtn">印刷する</button>
+      </div>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+      <div class="statusline" id="dataStatus"></div>
+      <div class="licensebox" id="statsBox"></div>
+      <button class="btn danger" id="resetAll" style="align-self:flex-start">すべてのデータを消す</button>
+    </div>
+    <footer><button class="btn" data-close="dataModal">閉じる</button></footer>
+  </div>
+</div>
+
+<!-- プロジェクト編集 -->
+<div class="overlay" id="projectModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="projectTitle">
+    <header id="projectTitle">プロジェクト</header>
+    <div class="body">
+      <div class="field"><label for="pName">名前</label><input id="pName" type="text" placeholder="例）製品リリース"></div>
+      <div class="field"><label>色</label><div id="pColors" style="display:flex;gap:8px;flex-wrap:wrap"></div></div>
+      <div class="statusline" id="projectStatus"></div>
+    </div>
+    <footer>
+      <button class="btn danger" id="pDelete">削除</button>
+      <span style="flex:1"></span>
+      <button class="btn" data-close="projectModal">閉じる</button>
+      <button class="btn primary" id="pSave">保存</button>
+    </footer>
+  </div>
+</div>
+
+<!-- ヘルプ -->
+<div class="overlay" id="helpModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+    <header id="helpTitle">キーボード操作と入力のコツ</header>
+    <div class="body">
+      <div class="kbdlist">
+        <kbd>N</kbd><span>タスクの入力欄へ移動する</span>
+        <kbd>/</kbd><span>検索欄へ移動する</span>
+        <kbd>E</kbd><span>選択中のタスクを開く</span>
+        <kbd>Space</kbd><span>選択中のタスクの完了を切り替える</span>
+        <kbd>↑ ↓</kbd><span>タスクを選ぶ</span>
+        <kbd>1 2 3</kbd><span>選択中のタスクを 未着手 / 進行中 / 完了 にする</span>
+        <kbd>Delete</kbd><span>選択中のタスクを削除する（取り消せます）</span>
+        <kbd>Esc</kbd><span>パネル・ダイアログを閉じる</span>
+      </div>
+      <p class="note">入力欄では次の書き方が使えます。<br>
+        <b>#タグ</b> … タグを付ける　<b>!1 / !2 / !3</b> … 優先度（高・中・低）<br>
+        <b>@今日</b> <b>@明日</b> <b>@月曜</b> <b>@8-31</b> <b>@2026-08-31</b> … 期限</p>
+    </div>
+    <footer><button class="btn" data-close="helpModal">閉じる</button></footer>
+  </div>
+</div>
+
+<div id="toast"><span id="toastText"></span><button id="toastAction" hidden>元に戻す</button></div>
+<script>
+"use strict";
+/* ============================================================
+   TaskDeck — 単体 HTML のタスク管理ツール
+   このファイル 1 つで完結します。外部への通信は行いません。
+   ============================================================ */
+
+/* ---- 販売者が keygen.py init で書き換える行（この 1 行だけ） ---- */
+const LICENSE_PUBLIC_KEY = "__PUBLIC_KEY__";
+
+// === license-verify:start ===
+// ライセンスキーの検証。公開鍵しか持たないため、配布物からキーは偽造できない。
+// tools/keygen.py（Python 側の署名）と一対一で対応する。tests/test_license.py が両者の一致を検証する。
+const TaskDeckLicense = (function () {
+  const K = [
+    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+
+  function sha256(bytes) {
+    const h = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+    const bitLen = bytes.length * 8;
+    const padded = new Uint8Array((((bytes.length + 9) + 63) & ~63));
+    padded.set(bytes);
+    padded[bytes.length] = 0x80;
+    const view = new DataView(padded.buffer);
+    view.setUint32(padded.length - 8, Math.floor(bitLen / 0x100000000));
+    view.setUint32(padded.length - 4, bitLen >>> 0);
+    const w = new Uint32Array(64);
+    const rotr = (x, n) => (x >>> n) | (x << (32 - n));
+    for (let offset = 0; offset < padded.length; offset += 64) {
+      for (let i = 0; i < 16; i++) w[i] = view.getUint32(offset + i * 4);
+      for (let i = 16; i < 64; i++) {
+        const s0 = rotr(w[i-15],7) ^ rotr(w[i-15],18) ^ (w[i-15] >>> 3);
+        const s1 = rotr(w[i-2],17) ^ rotr(w[i-2],19) ^ (w[i-2] >>> 10);
+        w[i] = (w[i-16] + s0 + w[i-7] + s1) >>> 0;
+      }
+      let [a,b,c,d,e,f,g,hh] = h;
+      for (let i = 0; i < 64; i++) {
+        const S1 = rotr(e,6) ^ rotr(e,11) ^ rotr(e,25);
+        const ch = (e & f) ^ (~e & g);
+        const t1 = (hh + S1 + ch + K[i] + w[i]) >>> 0;
+        const S0 = rotr(a,2) ^ rotr(a,13) ^ rotr(a,22);
+        const maj = (a & b) ^ (a & c) ^ (b & c);
+        const t2 = (S0 + maj) >>> 0;
+        hh = g; g = f; f = e; e = (d + t1) >>> 0;
+        d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+      }
+      const next = [a,b,c,d,e,f,g,hh];
+      for (let i = 0; i < 8; i++) h[i] = (h[i] + next[i]) >>> 0;
+    }
+    const out = new Uint8Array(32);
+    const outView = new DataView(out.buffer);
+    for (let i = 0; i < 8; i++) outView.setUint32(i * 4, h[i]);
+    return out;
+  }
+
+  // NIST P-256
+  const P = 0xffffffff00000001000000000000000000000000ffffffffffffffffffffffffn;
+  const A = P - 3n;
+  const N = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+  const G = {
+    x: 0x6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296n,
+    y: 0x4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5n,
+  };
+
+  const mod = (x, m) => ((x % m) + m) % m;
+
+  function inv(value, m) {
+    // 拡張ユークリッド互除法
+    let [oldR, r] = [mod(value, m), m];
+    let [oldS, s] = [1n, 0n];
+    while (r !== 0n) {
+      const q = oldR / r;
+      [oldR, r] = [r, oldR - q * r];
+      [oldS, s] = [s, oldS - q * s];
+    }
+    return mod(oldS, m);
+  }
+
+  function pointAdd(p1, p2) {
+    if (!p1) return p2;
+    if (!p2) return p1;
+    if (p1.x === p2.x && mod(p1.y + p2.y, P) === 0n) return null;
+    let lam;
+    if (p1.x === p2.x && p1.y === p2.y) {
+      lam = mod((3n * p1.x * p1.x + A) * inv(2n * p1.y, P), P);
+    } else {
+      lam = mod((p2.y - p1.y) * inv(p2.x - p1.x, P), P);
+    }
+    const x = mod(lam * lam - p1.x - p2.x, P);
+    return { x, y: mod(lam * (p1.x - x) - p1.y, P) };
+  }
+
+  function pointMul(k, point) {
+    let result = null;
+    let addend = point;
+    while (k > 0n) {
+      if (k & 1n) result = pointAdd(result, addend);
+      addend = pointAdd(addend, addend);
+      k >>= 1n;
+    }
+    return result;
+  }
+
+  function onCurve(point) {
+    const B = 0x5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604bn;
+    return mod(point.y * point.y - (point.x * point.x * point.x + A * point.x + B), P) === 0n;
+  }
+
+  function bytesToBigInt(bytes) {
+    let value = 0n;
+    for (const byte of bytes) value = (value << 8n) | BigInt(byte);
+    return value;
+  }
+
+  function parsePublicKey(hex) {
+    if (typeof hex !== "string" || hex.length !== 130 || !hex.toLowerCase().startsWith("04")) return null;
+    if (!/^[0-9a-fA-F]+$/.test(hex)) return null;
+    const point = { x: BigInt("0x" + hex.slice(2, 66)), y: BigInt("0x" + hex.slice(66)) };
+    return onCurve(point) ? point : null;
+  }
+
+  function ecdsaVerify(publicKey, message, signature) {
+    if (signature.length !== 64) return false;
+    const r = bytesToBigInt(signature.slice(0, 32));
+    const s = bytesToBigInt(signature.slice(32));
+    if (r <= 0n || r >= N || s <= 0n || s >= N) return false;
+    const z = bytesToBigInt(sha256(message));
+    const w = inv(s, N);
+    const point = pointAdd(pointMul(mod(z * w, N), G), pointMul(mod(r * w, N), publicKey));
+    if (!point) return false;
+    return mod(point.x, N) === r;
+  }
+
+  function b64urlToBytes(text) {
+    const base64 = text.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((text.length + 3) % 4);
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  /**
+   * キーを検証する。{ ok, payload, reason } を返す。
+   * today は "YYYY-MM-DD"。有効期限の判定に使う（テストから固定日を渡せるようにしている）。
+   */
+  function verifyKey(key, publicKeyHex, today) {
+    const publicKey = parsePublicKey(publicKeyHex);
+    if (!publicKey) return { ok: false, reason: "このアプリにはまだ公開鍵が設定されていません。販売元にお問い合わせください。" };
+    const parts = String(key || "").trim().split(".");
+    if (parts.length !== 3 || parts[0] !== "TD1") {
+      return { ok: false, reason: "キーの形式が違います。TD1. から始まる文字列を、余分な改行を含めずに貼り付けてください。" };
+    }
+    let body, signature;
+    try {
+      body = b64urlToBytes(parts[1]);
+      signature = b64urlToBytes(parts[2]);
+    } catch (e) {
+      return { ok: false, reason: "キーが途中で欠けているようです。もう一度すべて貼り付けてください。" };
+    }
+    if (!ecdsaVerify(publicKey, body, signature)) {
+      return { ok: false, reason: "このキーは正しくありません。購入時のメールに記載されたキーをご確認ください。" };
+    }
+    let payload;
+    try {
+      payload = JSON.parse(new TextDecoder().decode(body));
+    } catch (e) {
+      return { ok: false, reason: "キーの内容を読み取れませんでした。" };
+    }
+    if (payload.e && today && payload.e < today) {
+      return { ok: false, payload, reason: "このキーは " + payload.e + " で有効期限が切れています。" };
+    }
+    return { ok: true, payload };
+  }
+
+  return { verifyKey, sha256 };
+})();
+// === license-verify:end ===
+
+/* ============================================================
+   1. 保存データ
+   ============================================================ */
+const STORAGE_KEY = "taskdeck.data.v1";
+const LICENSE_STORAGE_KEY = "taskdeck.license.v1";
+const TRIAL_TASK_LIMIT = 30;
+
+const STATUSES = [
+  { id: "todo",  label: "未着手" },
+  { id: "doing", label: "進行中" },
+  { id: "done",  label: "完了"   },
+];
+const PRIORITY_LABEL = { 1: "高", 2: "中", 3: "低" };
+const PLAN_LABEL = { personal: "パーソナル", business: "ビジネス", site: "サイトライセンス" };
+const PROJECT_COLORS = ["#2f6df6", "#8b5cf6", "#e0699a", "#d64545", "#e08a1e", "#1f8a5b", "#12a2b8", "#6b7280"];
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+function defaultData() {
+  const projectId = uid();
+  const today = todayStr();
+  return {
+    version: 1,
+    projects: [{ id: projectId, name: "はじめてのプロジェクト", color: PROJECT_COLORS[0] }],
+    tasks: [
+      newTask({ title: "TaskDeck の使い方をつかむ（このタスクをクリックしてみてください）", projectId, status: "doing", priority: 2, due: today, tags: ["入門"],
+        notes: "・上の入力欄に文字を打って Enter でタスクが増えます\n・カードをドラッグすると列を移動できます\n・右上の ⇅ からバックアップを書き出せます",
+        subtasks: [
+          { id: uid(), title: "タスクを 1 件追加してみる", done: false },
+          { id: uid(), title: "カードを「進行中」へ動かしてみる", done: false },
+          { id: uid(), title: "JSON で書き出してみる", done: false },
+        ] }),
+      newTask({ title: "今週の締め切りを洗い出す", projectId, priority: 1, tags: ["段取り"] }),
+      newTask({ title: "使わなくなったタスクは削除できます", projectId, priority: 3 }),
+    ].map((task, index) => ({ ...task, order: index })),
+    settings: { theme: "light", view: "board", filter: { type: "smart", value: "all" }, sort: "order" },
+  };
+}
+
+function newTask(partial) {
+  const now = new Date().toISOString();
+  return Object.assign({
+    id: uid(), title: "", notes: "", projectId: null, status: "todo", priority: 2,
+    due: null, tags: [], subtasks: [], order: 0, createdAt: now, updatedAt: now, completedAt: null,
+  }, partial);
+}
+
+/** 壊れた・古い保存データが来ても落ちないように整える。 */
+function normalize(raw) {
+  const base = defaultData();
+  if (!raw || typeof raw !== "object") return base;
+  const projects = Array.isArray(raw.projects) ? raw.projects
+    .filter(p => p && typeof p.name === "string")
+    .map(p => ({ id: String(p.id || uid()), name: p.name.slice(0, 60), color: PROJECT_COLORS.includes(p.color) ? p.color : PROJECT_COLORS[0] })) : [];
+  const projectIds = new Set(projects.map(p => p.id));
+  const tasks = Array.isArray(raw.tasks) ? raw.tasks
+    .filter(t => t && typeof t.title === "string")
+    .map((t, index) => newTask({
+      id: String(t.id || uid()),
+      title: t.title.slice(0, 500),
+      notes: typeof t.notes === "string" ? t.notes : "",
+      projectId: projectIds.has(t.projectId) ? t.projectId : (projects[0] ? projects[0].id : null),
+      status: STATUSES.some(s => s.id === t.status) ? t.status : "todo",
+      priority: [1, 2, 3].includes(Number(t.priority)) ? Number(t.priority) : 2,
+      due: isDateStr(t.due) ? t.due : null,
+      tags: Array.isArray(t.tags) ? [...new Set(t.tags.filter(x => typeof x === "string" && x).map(x => x.slice(0, 24)))].slice(0, 12) : [],
+      subtasks: Array.isArray(t.subtasks) ? t.subtasks.filter(s => s && typeof s.title === "string")
+        .map(s => ({ id: String(s.id || uid()), title: s.title.slice(0, 200), done: !!s.done })).slice(0, 100) : [],
+      order: Number.isFinite(t.order) ? t.order : index,
+      createdAt: typeof t.createdAt === "string" ? t.createdAt : new Date().toISOString(),
+      updatedAt: typeof t.updatedAt === "string" ? t.updatedAt : new Date().toISOString(),
+      completedAt: typeof t.completedAt === "string" ? t.completedAt : null,
+    })) : [];
+  const settings = Object.assign(base.settings, raw.settings && typeof raw.settings === "object" ? raw.settings : {});
+  if (!["board", "list"].includes(settings.view)) settings.view = "board";
+  if (!settings.filter || typeof settings.filter !== "object") settings.filter = { type: "smart", value: "all" };
+  return { version: 1, projects: projects.length ? projects : base.projects, tasks, settings };
+}
+
+let data;
+let ui = { selectedId: null, editingId: null, query: "", editingProjectId: null, undo: null, toastTimer: null };
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    data = raw ? normalize(JSON.parse(raw)) : defaultData();
+  } catch (e) {
+    console.warn("保存データを読めなかったため初期状態で開きます", e);
+    data = defaultData();
+  }
+}
+
+let saveTimer = null;
+let savePending = false;
+
+/** localStorage への実際の書き込み。連打しても重くならないよう save() から間引いて呼ぶ。 */
+function flushSave() {
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  if (!savePending) return;
+  savePending = false;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch (e) {
+    toast("保存できませんでした。ブラウザの空き容量をご確認ください。");
+  }
+}
+
+function save() {
+  savePending = true;
+  if (saveTimer) return;
+  saveTimer = setTimeout(flushSave, 120);
+}
+
+/* ============================================================
+   2. ライセンス
+   ============================================================ */
+let license = null;   // { key, payload } 検証に通ったものだけが入る
+
+function loadLicense() {
+  try {
+    const raw = localStorage.getItem(LICENSE_STORAGE_KEY);
+    if (!raw) return null;
+    const saved = JSON.parse(raw);
+    const result = TaskDeckLicense.verifyKey(saved.key, LICENSE_PUBLIC_KEY, todayStr());
+    return result.ok ? { key: saved.key, payload: result.payload } : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+const isLicensed = () => license !== null;
+const taskLimitReached = () => !isLicensed() && data.tasks.length >= TRIAL_TASK_LIMIT;
+
+/* ============================================================
+   3. 日付とテキストの小道具
+   ============================================================ */
+function isDateStr(value) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
+}
+function todayStr(offsetDays = 0) {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+}
+function daysUntil(dateStr) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const target = new Date(y, m - 1, d);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((target - today) / 86400000);
+}
+function dueLabel(dateStr) {
+  const diff = daysUntil(dateStr);
+  if (diff === 0) return "今日";
+  if (diff === 1) return "明日";
+  if (diff === -1) return "昨日";
+  if (diff < 0) return `${-diff}日超過`;
+  if (diff <= 7) return `${diff}日後`;
+  const [, m, d] = dateStr.split("-");
+  return `${Number(m)}/${Number(d)}`;
+}
+function dueClass(dateStr) {
+  const diff = daysUntil(dateStr);
+  return diff < 0 ? "over" : diff === 0 ? "today" : "";
+}
+function formatStamp(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+const WEEKDAYS = { "日曜": 0, "月曜": 1, "火曜": 2, "水曜": 3, "木曜": 4, "金曜": 5, "土曜": 6 };
+
+/** 入力欄の 1 行から #タグ・!優先度・@期限 を取り出す。 */
+function parseQuickAdd(text) {
+  const result = { title: "", tags: [], priority: 2, due: null };
+  const words = [];
+  for (const token of text.trim().split(/\s+/)) {
+    if (token.length > 1 && token.startsWith("#")) {
+      result.tags.push(token.slice(1).slice(0, 24));
+    } else if (/^![123]$/.test(token)) {
+      result.priority = Number(token[1]);
+    } else if (token.length > 1 && token.startsWith("@")) {
+      const due = parseDueToken(token.slice(1));
+      if (due) result.due = due; else words.push(token);
+    } else if (token) {
+      words.push(token);
+    }
+  }
+  result.title = words.join(" ");
+  result.tags = [...new Set(result.tags)].slice(0, 12);
+  return result;
+}
+
+function parseDueToken(token) {
+  if (token === "今日" || token.toLowerCase() === "today") return todayStr();
+  if (token === "明日" || token.toLowerCase() === "tomorrow") return todayStr(1);
+  if (token === "明後日") return todayStr(2);
+  if (token === "来週") return todayStr(7);
+  if (token in WEEKDAYS) {
+    const diff = (WEEKDAYS[token] - new Date().getDay() + 7) % 7 || 7;
+    return todayStr(diff);
+  }
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(token)) {
+    const [y, m, d] = token.split("-").map(Number);
+    return isDateStr(pad(y, m, d)) ? pad(y, m, d) : null;
+  }
+  if (/^\d{1,2}[-/]\d{1,2}$/.test(token)) {
+    const [m, d] = token.split(/[-/]/).map(Number);
+    const year = new Date().getFullYear();
+    const candidate = pad(year, m, d);
+    if (!isDateStr(candidate)) return null;
+    // 過ぎた日付なら来年とみなす
+    return daysUntil(candidate) < -180 ? pad(year + 1, m, d) : candidate;
+  }
+  return null;
+}
+const pad = (y, m, d) => `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+}
+
+/* ============================================================
+   4. 絞り込み
+   ============================================================ */
+// match は「そのビューに属するか」。完了したタスクも属したままにして、
+// ボードの「完了」列に残るようにする。サイドバーの件数は未完了だけを数える（badge）。
+const SMART_VIEWS = [
+  { id: "today",     label: "今日",     icon: "◎", match: t => !!t.due && daysUntil(t.due) <= 0 },
+  { id: "week",      label: "今週",     icon: "▤", match: t => !!t.due && daysUntil(t.due) <= 7 },
+  { id: "important", label: "重要",     icon: "★", match: t => t.priority === 1 },
+  { id: "all",       label: "すべて",   icon: "≡", match: () => true },
+  { id: "done",      label: "完了済み", icon: "✓", match: t => t.status === "done" },
+];
+// 「完了」列に一度に並べる上限。溜まっても画面が重くならないようにする。
+const DONE_COLUMN_LIMIT = 30;
+
+function matchesFilter(task) {
+  const filter = data.settings.filter;
+  if (filter.type === "project") return task.projectId === filter.value;
+  if (filter.type === "tag") return task.tags.includes(filter.value);
+  const view = SMART_VIEWS.find(v => v.id === filter.value) || SMART_VIEWS[3];
+  return view.match(task);
+}
+
+function matchesQuery(task) {
+  const query = ui.query.trim().toLowerCase();
+  if (!query) return true;
+  const haystack = [task.title, task.notes, task.tags.join(" "), task.subtasks.map(s => s.title).join(" ")].join(" ").toLowerCase();
+  return query.split(/\s+/).every(word => haystack.includes(word));
+}
+
+function visibleTasks() {
+  return data.tasks.filter(task => matchesFilter(task) && matchesQuery(task));
+}
+
+const projectOf = id => data.projects.find(p => p.id === id) || null;
+
+function sortTasks(tasks) {
+  const sort = data.settings.sort || "order";
+  const list = [...tasks];
+  const byOrder = (a, b) => a.order - b.order;
+  const rules = {
+    order: byOrder,
+    title: (a, b) => a.title.localeCompare(b.title, "ja"),
+    priority: (a, b) => a.priority - b.priority || byOrder(a, b),
+    status: (a, b) => STATUSES.findIndex(s => s.id === a.status) - STATUSES.findIndex(s => s.id === b.status) || byOrder(a, b),
+    due: (a, b) => {
+      if (a.due === b.due) return byOrder(a, b);
+      if (!a.due) return 1;
+      if (!b.due) return -1;
+      return a.due < b.due ? -1 : 1;
+    },
+    project: (a, b) => (projectOf(a.projectId)?.name || "").localeCompare(projectOf(b.projectId)?.name || "", "ja") || byOrder(a, b),
+  };
+  return list.sort(rules[sort] || byOrder);
+}
+
+/* ============================================================
+   5. 画面の描画
+   ============================================================ */
+const $ = id => document.getElementById(id);
+
+function render() {
+  renderSidebar();
+  renderHead();
+  renderMain();
+  renderTrialBar();
+  $("editionTag").textContent = isLicensed() ? (PLAN_LABEL[license.payload.p] || "製品版") : "評価版";
+}
+
+function renderSidebar() {
+  const filter = data.settings.filter;
+  const smart = SMART_VIEWS.map(view => {
+    const count = view.id === "done"
+      ? data.tasks.filter(view.match).length
+      : data.tasks.filter(t => t.status !== "done" && view.match(t)).length;
+    const active = filter.type === "smart" && filter.value === view.id;
+    return `<button class="navitem${active ? " active" : ""}" data-filter="smart" data-value="${view.id}">
+      <span style="width:14px;text-align:center">${view.icon}</span><span>${view.label}</span><span class="count">${count}</span></button>`;
+  }).join("");
+  $("smartNav").innerHTML = smart;
+
+  $("projectNav").innerHTML = data.projects.map(project => {
+    const count = data.tasks.filter(t => t.projectId === project.id && t.status !== "done").length;
+    const active = filter.type === "project" && filter.value === project.id;
+    return `<div class="project-row">
+      <button class="navitem${active ? " active" : ""}" data-filter="project" data-value="${project.id}">
+        <span class="dot" style="background:${project.color}"></span>
+        <span class="name">${escapeHtml(project.name)}</span><span class="count">${count}</span></button>
+      <button class="edit" data-edit-project="${project.id}" title="このプロジェクトを編集" aria-label="${escapeHtml(project.name)} を編集">✎</button>
+    </div>`;
+  }).join("");
+
+  const tags = new Map();
+  for (const task of data.tasks) {
+    if (task.status === "done") continue;
+    for (const tag of task.tags) tags.set(tag, (tags.get(tag) || 0) + 1);
+  }
+  const sortedTags = [...tags.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ja")).slice(0, 20);
+  $("tagNav").innerHTML = sortedTags.length
+    ? sortedTags.map(([tag, count]) => {
+        const active = filter.type === "tag" && filter.value === tag;
+        return `<button class="navitem${active ? " active" : ""}" data-filter="tag" data-value="${escapeHtml(tag)}">
+          <span style="width:14px;text-align:center;color:var(--faint)">#</span><span>${escapeHtml(tag)}</span><span class="count">${count}</span></button>`;
+      }).join("")
+    : `<div style="padding:4px 10px;color:var(--faint);font-size:12px">#タグ を付けるとここに並びます</div>`;
+}
+
+function currentViewName() {
+  const filter = data.settings.filter;
+  if (filter.type === "project") return projectOf(filter.value)?.name || "プロジェクト";
+  if (filter.type === "tag") return "#" + filter.value;
+  return (SMART_VIEWS.find(v => v.id === filter.value) || SMART_VIEWS[3]).label;
+}
+
+function renderHead() {
+  $("viewTitle").textContent = currentViewName();
+  const tasks = visibleTasks();
+  const done = tasks.filter(t => t.status === "done").length;
+  const overdue = tasks.filter(t => t.status !== "done" && t.due && daysUntil(t.due) < 0).length;
+  const parts = [`${tasks.length} 件`];
+  if (done) parts.push(`完了 ${done}`);
+  if (overdue) parts.push(`期限切れ ${overdue}`);
+  if (ui.query.trim()) parts.push(`「${ui.query.trim()}」で検索中`);
+  $("viewSub").textContent = parts.join(" ・ ");
+  for (const button of document.querySelectorAll(".viewtabs button")) {
+    button.classList.toggle("active", button.dataset.mode === data.settings.view);
+  }
+}
+
+function renderMain() {
+  const scroller = $("scroller");
+  const tasks = visibleTasks();
+  if (!tasks.length) {
+    scroller.innerHTML = `<div class="empty"><div class="big">${ui.query.trim() ? "見つかりませんでした" : "タスクはありません"}</div>
+      <div>${ui.query.trim() ? "別のことばで探すか、検索欄を空にしてください。" : "上の入力欄に打ち込んで Enter を押すと追加できます。"}</div></div>`;
+    return;
+  }
+  scroller.innerHTML = data.settings.view === "board" ? boardHtml(tasks) : listHtml(tasks);
+  if (data.settings.view === "board") wireBoardDragging();
+}
+
+function taskCardHtml(task) {
+  const project = projectOf(task.projectId);
+  const chips = [];
+  if (task.due) chips.push(`<span class="chip due ${dueClass(task.due)}">${dueLabel(task.due)}</span>`);
+  if (task.priority === 1) chips.push(`<span class="chip" style="color:var(--danger);border-color:var(--danger)">高</span>`);
+  if (task.subtasks.length) {
+    chips.push(`<span class="chip sub">${task.subtasks.filter(s => s.done).length}/${task.subtasks.length}</span>`);
+  }
+  for (const tag of task.tags.slice(0, 3)) chips.push(`<span class="chip tag">#${escapeHtml(tag)}</span>`);
+  if (project && data.settings.filter.type !== "project") {
+    chips.push(`<span class="chip prj" style="background:${project.color}22;color:${project.color}">${escapeHtml(project.name)}</span>`);
+  }
+  return `<article class="card${task.status === "done" ? " done" : ""}${ui.selectedId === task.id ? " selected" : ""}"
+      draggable="true" data-id="${task.id}" tabindex="0">
+    <button class="check" data-toggle="${task.id}" title="完了を切り替える" aria-label="完了を切り替える">✓</button>
+    <div class="title">${escapeHtml(task.title)}</div>
+    ${chips.length ? `<div class="meta">${chips.join("")}</div>` : ""}
+  </article>`;
+}
+
+function boardHtml(tasks) {
+  return `<div class="board">` + STATUSES.map(status => {
+    let columnTasks = tasks.filter(t => t.status === status.id);
+    let hidden = 0;
+    if (status.id === "done") {
+      // 完了は「最近終わったもの」から見せる。溜まった分は完了済みビューで見てもらう。
+      columnTasks.sort((a, b) => String(b.completedAt || b.updatedAt).localeCompare(String(a.completedAt || a.updatedAt)));
+      hidden = Math.max(0, columnTasks.length - DONE_COLUMN_LIMIT);
+      columnTasks = columnTasks.slice(0, DONE_COLUMN_LIMIT);
+    } else {
+      columnTasks = sortTasks(columnTasks);
+    }
+    const more = hidden ? `<div style="padding:6px 2px;color:var(--faint);font-size:12px">ほか ${hidden} 件（「完了済み」ビューで見られます）</div>` : "";
+    return `<section class="column" data-status="${status.id}">
+      <div class="colhead"><span class="dot" style="background:${status.id === "done" ? "var(--ok)" : status.id === "doing" ? "var(--accent)" : "var(--faint)"}"></span>
+        ${status.label}<span class="count">${tasks.filter(t => t.status === status.id).length}</span></div>
+      <div class="collist" data-status="${status.id}">${columnTasks.map(taskCardHtml).join("")}${more}</div>
+    </section>`;
+  }).join("") + `</div>`;
+}
+
+function listHtml(tasks) {
+  const sorted = sortTasks(tasks);
+  const columns = [
+    ["title", "タスク"], ["status", "状態"], ["priority", "優先度"], ["due", "期限"], ["project", "プロジェクト"],
+  ];
+  const head = columns.map(([key, label]) =>
+    `<th data-sort="${key}">${label}${data.settings.sort === key ? " ▾" : ""}</th>`).join("");
+  const rows = sorted.map(task => {
+    const project = projectOf(task.projectId);
+    return `<tr data-id="${task.id}" class="${task.status === "done" ? "done" : ""}${ui.selectedId === task.id ? " selected" : ""}">
+      <td class="c-check"><button class="check" data-toggle="${task.id}" style="position:static" title="完了を切り替える" aria-label="完了を切り替える">✓</button></td>
+      <td class="c-title">${escapeHtml(task.title)}
+        ${task.tags.map(tag => `<span class="chip tag">#${escapeHtml(tag)}</span>`).join(" ")}</td>
+      <td>${STATUSES.find(s => s.id === task.status).label}</td>
+      <td><span class="prio p${task.priority}">${PRIORITY_LABEL[task.priority]}</span></td>
+      <td>${task.due ? `<span class="chip due ${dueClass(task.due)}">${dueLabel(task.due)}</span>` : `<span style="color:var(--faint)">—</span>`}</td>
+      <td>${project ? `<span class="chip prj" style="background:${project.color}22;color:${project.color}">${escapeHtml(project.name)}</span>` : ""}</td>
+    </tr>`;
+  }).join("");
+  return `<table class="list"><thead><tr><th style="width:28px"></th>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderTrialBar() {
+  const bar = $("trialBar");
+  bar.classList.toggle("show", !isLicensed());
+  if (!isLicensed()) {
+    const remaining = Math.max(0, TRIAL_TASK_LIMIT - data.tasks.length);
+    $("trialText").textContent = remaining > 0
+      ? `評価版です。あと ${remaining} 件までタスクを追加できます（上限 ${TRIAL_TASK_LIMIT} 件）。`
+      : `評価版の上限 ${TRIAL_TASK_LIMIT} 件に達しました。ライセンスキーを登録すると制限がなくなります。`;
+  }
+}
+
+/* ============================================================
+   6. タスクの操作
+   ============================================================ */
+const taskById = id => data.tasks.find(t => t.id === id) || null;
+
+function touch(task) {
+  task.updatedAt = new Date().toISOString();
+}
+
+function addTask(text) {
+  if (taskLimitReached()) {
+    openModal("licenseModal");
+    setStatusLine("licenseStatus", `評価版で保存できるのは ${TRIAL_TASK_LIMIT} 件までです。ライセンスキーを登録すると制限がなくなります。`, false);
+    return null;
+  }
+  const parsed = parseQuickAdd(text);
+  if (!parsed.title) return null;
+  const filter = data.settings.filter;
+  const task = newTask({
+    title: parsed.title,
+    tags: filter.type === "tag" ? [...new Set([...parsed.tags, filter.value])] : parsed.tags,
+    priority: parsed.priority,
+    due: parsed.due || (filter.type === "smart" && filter.value === "today" ? todayStr() : null),
+    projectId: filter.type === "project" ? filter.value : (data.projects[0]?.id ?? null),
+    order: Math.min(0, ...data.tasks.map(t => t.order)) - 1,
+  });
+  data.tasks.push(task);
+  ui.selectedId = task.id;
+  save();
+  render();
+  return task;
+}
+
+function setStatus(task, status) {
+  task.status = status;
+  task.completedAt = status === "done" ? new Date().toISOString() : null;
+  touch(task);
+  save();
+  render();
+  if (ui.editingId === task.id) fillDrawer(task);
+}
+
+function toggleDone(task) {
+  setStatus(task, task.status === "done" ? "todo" : "done");
+}
+
+function deleteTask(task, { silent = false } = {}) {
+  const index = data.tasks.findIndex(t => t.id === task.id);
+  if (index < 0) return;
+  data.tasks.splice(index, 1);
+  if (ui.editingId === task.id) closeDrawer();
+  if (ui.selectedId === task.id) ui.selectedId = null;
+  save();
+  render();
+  if (!silent) {
+    ui.undo = { task, index };
+    toast(`「${task.title.slice(0, 18)}」を削除しました`, "元に戻す", () => {
+      data.tasks.splice(Math.min(index, data.tasks.length), 0, task);
+      ui.undo = null;
+      save();
+      render();
+    });
+  }
+}
+
+/* ---- 詳細パネル ---- */
+function openDrawer(id) {
+  const task = taskById(id);
+  if (!task) return;
+  ui.editingId = id;
+  ui.selectedId = id;
+  fillDrawer(task);
+  $("drawer").classList.add("open");
+  render();
+  $("dTitle").focus();
+  $("dTitle").setSelectionRange($("dTitle").value.length, $("dTitle").value.length);
+}
+
+function closeDrawer() {
+  ui.editingId = null;
+  $("drawer").classList.remove("open");
+  render();
+}
+
+function fillDrawer(task) {
+  $("dTitle").value = task.title;
+  $("dStatus").value = task.status;
+  $("dPriority").value = String(task.priority);
+  $("dDue").value = task.due || "";
+  $("dNotes").value = task.notes;
+  $("dProject").innerHTML = data.projects
+    .map(p => `<option value="${p.id}"${p.id === task.projectId ? " selected" : ""}>${escapeHtml(p.name)}</option>`)
+    .join("") || `<option value="">（プロジェクトなし）</option>`;
+  renderTags(task);
+  renderSubtasks(task);
+  $("dStamp").textContent = `更新 ${formatStamp(task.updatedAt)}`;
+  $("dStamp").title = `作成 ${formatStamp(task.createdAt)}／更新 ${formatStamp(task.updatedAt)}`;
+}
+
+function renderTags(task) {
+  const container = $("dTags");
+  const input = $("dTagInput");
+  for (const chip of [...container.querySelectorAll(".chip")]) chip.remove();
+  for (const tag of task.tags) {
+    const chip = document.createElement("span");
+    chip.className = "chip tag";
+    chip.innerHTML = `#${escapeHtml(tag)} <button type="button" title="外す" aria-label="${escapeHtml(tag)} を外す">✕</button>`;
+    chip.querySelector("button").onclick = () => {
+      task.tags = task.tags.filter(t => t !== tag);
+      touch(task); save(); renderTags(task); render();
+    };
+    container.insertBefore(chip, input);
+  }
+}
+
+function renderSubtasks(task) {
+  const container = $("dSubtasks");
+  container.innerHTML = "";
+  for (const sub of task.subtasks) {
+    const row = document.createElement("div");
+    row.className = "subtask" + (sub.done ? " done" : "");
+    row.innerHTML = `<input type="checkbox"${sub.done ? " checked" : ""} aria-label="完了">
+      <input class="txt" type="text" value="${escapeHtml(sub.title)}" aria-label="サブタスク">
+      <button class="del" title="削除" aria-label="サブタスクを削除">✕</button>`;
+    const [checkbox, text, remove] = [row.querySelector("input[type=checkbox]"), row.querySelector(".txt"), row.querySelector(".del")];
+    checkbox.onchange = () => { sub.done = checkbox.checked; touch(task); save(); renderSubtasks(task); render(); };
+    text.oninput = () => { sub.title = text.value; touch(task); save(); };
+    text.onkeydown = event => { if (event.key === "Enter") { event.preventDefault(); addSubtask(task); } };
+    remove.onclick = () => { task.subtasks = task.subtasks.filter(s => s.id !== sub.id); touch(task); save(); renderSubtasks(task); render(); };
+    container.appendChild(row);
+  }
+  const done = task.subtasks.filter(s => s.done).length;
+  $("dSubCount").textContent = task.subtasks.length ? `${done}/${task.subtasks.length}` : "";
+  $("dProgress").style.width = task.subtasks.length ? `${(done / task.subtasks.length) * 100}%` : "0";
+}
+
+function addSubtask(task) {
+  task.subtasks.push({ id: uid(), title: "", done: false });
+  touch(task); save(); renderSubtasks(task);
+  const inputs = $("dSubtasks").querySelectorAll(".txt");
+  inputs[inputs.length - 1]?.focus();
+}
+
+/* ---- ドラッグ＆ドロップ ---- */
+function wireBoardDragging() {
+  let draggingId = null;
+  for (const card of document.querySelectorAll(".card")) {
+    card.addEventListener("dragstart", event => {
+      draggingId = card.dataset.id;
+      card.classList.add("dragging");
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", draggingId);
+    });
+    card.addEventListener("dragend", () => { draggingId = null; card.classList.remove("dragging"); });
+  }
+  for (const column of document.querySelectorAll(".column")) {
+    const list = column.querySelector(".collist");
+    column.addEventListener("dragover", event => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      column.classList.add("dragover");
+    });
+    column.addEventListener("dragleave", event => {
+      if (!column.contains(event.relatedTarget)) column.classList.remove("dragover");
+    });
+    column.addEventListener("drop", event => {
+      event.preventDefault();
+      column.classList.remove("dragover");
+      const id = draggingId || event.dataTransfer.getData("text/plain");
+      const task = taskById(id);
+      if (!task) return;
+      // 落とした位置の前後関係から並び順を決める
+      const siblings = [...list.querySelectorAll(".card")].filter(card => card.dataset.id !== id);
+      const pointerY = event.clientY;
+      let before = null;
+      for (const card of siblings) {
+        const box = card.getBoundingClientRect();
+        if (pointerY < box.top + box.height / 2) { before = taskById(card.dataset.id); break; }
+      }
+      const neighbours = siblings.map(card => taskById(card.dataset.id)).filter(Boolean);
+      if (!neighbours.length) {
+        task.order = 0;
+      } else if (before) {
+        const index = neighbours.indexOf(before);
+        const previous = index > 0 ? neighbours[index - 1].order : before.order - 2;
+        task.order = (previous + before.order) / 2;
+      } else {
+        task.order = neighbours[neighbours.length - 1].order + 1;
+      }
+      if (task.status !== column.dataset.status) {
+        task.status = column.dataset.status;
+        task.completedAt = task.status === "done" ? new Date().toISOString() : null;
+      }
+      touch(task);
+      ui.selectedId = task.id;
+      save();
+      render();
+      if (ui.editingId === task.id) fillDrawer(task);
+    });
+  }
+}
+
+/* ---- トースト ---- */
+function toast(message, actionLabel, action) {
+  clearTimeout(ui.toastTimer);
+  $("toastText").textContent = message;
+  const button = $("toastAction");
+  button.hidden = !actionLabel;
+  if (actionLabel) {
+    button.textContent = actionLabel;
+    button.onclick = () => { action(); hideToast(); };
+  }
+  $("toast").classList.add("show");
+  ui.toastTimer = setTimeout(hideToast, 6000);
+}
+const hideToast = () => $("toast").classList.remove("show");
+
+/* ---- モーダル ---- */
+function openModal(id) {
+  $(id).classList.add("open");
+  $(id).querySelector("input,textarea,button")?.focus();
+}
+function closeModal(id) {
+  $(id).classList.remove("open");
+}
+function setStatusLine(id, message, ok) {
+  const element = $(id);
+  element.textContent = message;
+  element.className = "statusline show " + (ok ? "ok" : "ng");
+}
+function clearStatusLine(id) {
+  $(id).className = "statusline";
+}
+
+/* ============================================================
+   7. 画面の操作をつなぐ
+   ============================================================ */
+function wireEvents() {
+  // --- 追加 ---
+  $("quickAddForm").addEventListener("submit", event => {
+    event.preventDefault();
+    const input = $("quickAddInput");
+    if (addTask(input.value)) input.value = "";
+  });
+
+  // --- 検索 ---
+  $("searchInput").addEventListener("input", event => {
+    ui.query = event.target.value;
+    renderHead();
+    renderMain();
+  });
+
+  // --- サイドバー ---
+  $("sidebar").addEventListener("click", event => {
+    const nav = event.target.closest("[data-filter]");
+    if (nav) {
+      data.settings.filter = { type: nav.dataset.filter, value: nav.dataset.value };
+      ui.selectedId = null;
+      save();
+      render();
+      $("sidebar").classList.remove("open");
+      return;
+    }
+    const edit = event.target.closest("[data-edit-project]");
+    if (edit) openProjectModal(edit.dataset.editProject);
+  });
+  $("addProjectBtn").addEventListener("click", () => openProjectModal(null));
+  $("menuBtn").addEventListener("click", () => $("sidebar").classList.toggle("open"));
+
+  // --- 表示切り替え ---
+  for (const button of document.querySelectorAll(".viewtabs button")) {
+    button.addEventListener("click", () => {
+      data.settings.view = button.dataset.mode;
+      save();
+      render();
+    });
+  }
+
+  // --- 一覧の操作 ---
+  $("scroller").addEventListener("click", event => {
+    const toggle = event.target.closest("[data-toggle]");
+    if (toggle) {
+      event.stopPropagation();
+      const task = taskById(toggle.dataset.toggle);
+      if (task) toggleDone(task);
+      return;
+    }
+    const row = event.target.closest("[data-id]");
+    if (row) openDrawer(row.dataset.id);
+    const sortHeader = event.target.closest("[data-sort]");
+    if (sortHeader) {
+      data.settings.sort = data.settings.sort === sortHeader.dataset.sort ? "order" : sortHeader.dataset.sort;
+      save();
+      render();
+    }
+  });
+
+  // --- 詳細パネル ---
+  $("drawerClose").addEventListener("click", closeDrawer);
+  const bindField = (id, apply) => {
+    $(id).addEventListener("input", () => {
+      const task = taskById(ui.editingId);
+      if (!task) return;
+      apply(task, $(id).value);
+      touch(task);
+      save();
+      renderSidebar();
+      renderHead();
+      renderMain();
+    });
+  };
+  bindField("dTitle", (task, value) => { task.title = value; });
+  bindField("dNotes", (task, value) => { task.notes = value; });
+  bindField("dDue", (task, value) => { task.due = isDateStr(value) ? value : null; });
+  bindField("dPriority", (task, value) => { task.priority = Number(value); });
+  bindField("dProject", (task, value) => { task.projectId = value || null; });
+  $("dStatus").addEventListener("change", () => {
+    const task = taskById(ui.editingId);
+    if (task) setStatus(task, $("dStatus").value);
+  });
+  $("dTagInput").addEventListener("keydown", event => {
+    if (event.key !== "Enter" && event.key !== ",") return;
+    event.preventDefault();
+    const task = taskById(ui.editingId);
+    const value = event.target.value.trim().replace(/^#/, "").slice(0, 24);
+    if (!task || !value) return;
+    if (!task.tags.includes(value) && task.tags.length < 12) task.tags.push(value);
+    event.target.value = "";
+    touch(task); save(); renderTags(task); render();
+  });
+  $("dAddSub").addEventListener("click", () => {
+    const task = taskById(ui.editingId);
+    if (task) addSubtask(task);
+  });
+  $("dDelete").addEventListener("click", () => {
+    const task = taskById(ui.editingId);
+    if (task) deleteTask(task);
+  });
+
+  // --- テーマ ---
+  $("themeBtn").addEventListener("click", () => {
+    data.settings.theme = data.settings.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = data.settings.theme;
+    save();
+  });
+
+  // --- ダイアログ ---
+  $("helpBtn").addEventListener("click", () => openModal("helpModal"));
+  $("dataBtn").addEventListener("click", () => { renderStats(); clearStatusLine("dataStatus"); openModal("dataModal"); });
+  $("licenseBtn").addEventListener("click", openLicenseModal);
+  $("trialActivate").addEventListener("click", openLicenseModal);
+  for (const button of document.querySelectorAll("[data-close]")) {
+    button.addEventListener("click", () => closeModal(button.dataset.close));
+  }
+  for (const overlay of document.querySelectorAll(".overlay")) {
+    overlay.addEventListener("mousedown", event => { if (event.target === overlay) closeModal(overlay.id); });
+  }
+
+  wireLicense();
+  wireDataTools();
+  wireProjectModal();
+  wireKeyboard();
+}
+
+/* ---- ライセンス ---- */
+function openLicenseModal() {
+  renderLicenseState();
+  clearStatusLine("licenseStatus");
+  openModal("licenseModal");
+}
+
+/** ライセンスの現在の状態をダイアログ内に描く。登録・解除の直後にも呼ぶ。 */
+function renderLicenseState() {
+  const box = $("licenseState");
+  if (isLicensed()) {
+    const payload = license.payload;
+    box.innerHTML = `<b style="color:var(--ok)">◎ 製品版として登録済みです</b>
+      <span>ライセンス名義：${escapeHtml(payload.n || "")}</span>
+      <span>プラン：${escapeHtml(PLAN_LABEL[payload.p] || payload.p || "")}　台数：${escapeHtml(String(payload.s || 1))}</span>
+      <span>発行日：${escapeHtml(payload.i || "")}　有効期限：${escapeHtml(payload.e || "無期限")}</span>`;
+    $("licenseKey").value = license.key;
+  } else {
+    box.innerHTML = `<b>評価版で動作中です</b>
+      <span>タスクは ${TRIAL_TASK_LIMIT} 件まで保存できます。機能の制限はありません。</span>
+      <span>ご購入時にお送りしたキーを貼り付けて「登録する」を押してください。</span>`;
+    $("licenseKey").value = "";
+  }
+}
+
+function wireLicense() {
+  $("licenseApply").addEventListener("click", () => {
+    const key = $("licenseKey").value.trim();
+    if (!key) { setStatusLine("licenseStatus", "ライセンスキーを貼り付けてください。", false); return; }
+    const result = TaskDeckLicense.verifyKey(key, LICENSE_PUBLIC_KEY, todayStr());
+    if (!result.ok) { setStatusLine("licenseStatus", result.reason, false); return; }
+    license = { key, payload: result.payload };
+    localStorage.setItem(LICENSE_STORAGE_KEY, JSON.stringify({ key }));
+    setStatusLine("licenseStatus", "登録しました。制限が解除されました。ご購入ありがとうございます。", true);
+    renderLicenseState();
+    render();
+    setTimeout(() => { closeModal("licenseModal"); toast("製品版として登録しました"); }, 900);
+  });
+  $("licenseRemove").addEventListener("click", () => {
+    localStorage.removeItem(LICENSE_STORAGE_KEY);
+    license = null;
+    renderLicenseState();
+    setStatusLine("licenseStatus", "この端末の登録を解除しました。キーは再度登録できます。", true);
+    $("licenseKey").value = "";
+    render();
+  });
+}
+
+/* ---- 書き出し・読み込み ---- */
+function download(filename, text, mime) {
+  const blob = new Blob([text], { type: mime + ";charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+const stamp = () => todayStr().replace(/-/g, "");
+
+function toCsv(tasks) {
+  const quote = value => `"${String(value ?? "").replace(/"/g, '""')}"`;
+  const header = ["タイトル", "状態", "優先度", "期限", "プロジェクト", "タグ", "サブタスク完了", "サブタスク合計", "メモ", "作成日時", "更新日時"];
+  const rows = tasks.map(task => [
+    task.title,
+    STATUSES.find(s => s.id === task.status).label,
+    PRIORITY_LABEL[task.priority],
+    task.due || "",
+    projectOf(task.projectId)?.name || "",
+    task.tags.join(" "),
+    task.subtasks.filter(s => s.done).length,
+    task.subtasks.length,
+    task.notes.replace(/\r?\n/g, " / "),
+    formatStamp(task.createdAt),
+    formatStamp(task.updatedAt),
+  ]);
+  // Excel でそのまま開けるよう BOM を付ける
+  return "﻿" + [header, ...rows].map(row => row.map(quote).join(",")).join("\r\n");
+}
+
+function renderStats() {
+  const total = data.tasks.length;
+  const done = data.tasks.filter(t => t.status === "done").length;
+  const overdue = data.tasks.filter(t => t.status !== "done" && t.due && daysUntil(t.due) < 0).length;
+  const rate = total ? Math.round((done / total) * 100) : 0;
+  $("statsBox").innerHTML = `<b>いまの状態</b>
+    <span>タスク ${total} 件 ／ 完了 ${done} 件（${rate}%）／ 期限切れ ${overdue} 件</span>
+    <span>プロジェクト ${data.projects.length} 件　保存先：このブラウザ（${escapeHtml(location.hostname || "ローカルファイル")}）</span>`;
+}
+
+function wireDataTools() {
+  $("exportJson").addEventListener("click", () => {
+    download(`taskdeck-backup-${stamp()}.json`, JSON.stringify(data, null, 2), "application/json");
+    setStatusLine("dataStatus", "JSON ファイルを書き出しました。", true);
+  });
+  $("exportCsv").addEventListener("click", () => {
+    download(`taskdeck-tasks-${stamp()}.csv`, toCsv(sortTasks(data.tasks)), "text/csv");
+    setStatusLine("dataStatus", "CSV ファイルを書き出しました。Excel でそのまま開けます。", true);
+  });
+  $("printBtn").addEventListener("click", () => { closeModal("dataModal"); setTimeout(() => window.print(), 120); });
+  $("importBtn").addEventListener("click", () => $("importFile").click());
+  $("importFile").addEventListener("change", event => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const incoming = normalize(JSON.parse(reader.result));
+        if (!confirm(`いまのデータを、読み込んだファイルの内容（タスク ${incoming.tasks.length} 件）で置き換えます。よろしいですか？`)) return;
+        data = incoming;
+        document.documentElement.dataset.theme = data.settings.theme === "dark" ? "dark" : "light";
+        save();
+        render();
+        renderStats();
+        setStatusLine("dataStatus", `読み込みました。タスク ${data.tasks.length} 件。`, true);
+      } catch (e) {
+        setStatusLine("dataStatus", "このファイルは読み込めませんでした。TaskDeck が書き出した JSON をお選びください。", false);
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = "";
+  });
+  $("resetAll").addEventListener("click", () => {
+    if (!confirm("すべてのタスクとプロジェクトを消します。取り消せません。よろしいですか？")) return;
+    data = defaultData();
+    save();
+    render();
+    renderStats();
+    setStatusLine("dataStatus", "初期状態に戻しました。", true);
+  });
+}
+
+/* ---- プロジェクト ---- */
+function openProjectModal(id) {
+  ui.editingProjectId = id;
+  const project = id ? projectOf(id) : null;
+  $("projectTitle").textContent = project ? "プロジェクトを編集" : "プロジェクトを追加";
+  $("pName").value = project ? project.name : "";
+  $("pDelete").style.visibility = project && data.projects.length > 1 ? "visible" : "hidden";
+  const current = project ? project.color : PROJECT_COLORS[data.projects.length % PROJECT_COLORS.length];
+  $("pColors").innerHTML = PROJECT_COLORS.map(color =>
+    `<button type="button" data-color="${color}" aria-label="色 ${color}" style="width:26px;height:26px;border-radius:50%;background:${color};
+      border:2px solid ${color === current ? "var(--text)" : "transparent"}"></button>`).join("");
+  clearStatusLine("projectStatus");
+  openModal("projectModal");
+  $("pName").focus();
+}
+
+function wireProjectModal() {
+  let picked = PROJECT_COLORS[0];
+  $("pColors").addEventListener("click", event => {
+    const button = event.target.closest("[data-color]");
+    if (!button) return;
+    picked = button.dataset.color;
+    for (const swatch of $("pColors").children) {
+      swatch.style.border = "2px solid " + (swatch.dataset.color === picked ? "var(--text)" : "transparent");
+    }
+  });
+  $("pSave").addEventListener("click", () => {
+    const name = $("pName").value.trim().slice(0, 60);
+    if (!name) { setStatusLine("projectStatus", "名前を入力してください。", false); return; }
+    const selected = $("pColors").querySelector('[style*="var(--text)"]')?.dataset.color || picked;
+    if (ui.editingProjectId) {
+      const project = projectOf(ui.editingProjectId);
+      project.name = name;
+      project.color = selected;
+    } else {
+      const project = { id: uid(), name, color: selected };
+      data.projects.push(project);
+      data.settings.filter = { type: "project", value: project.id };
+    }
+    save();
+    render();
+    closeModal("projectModal");
+  });
+  $("pDelete").addEventListener("click", () => {
+    const project = projectOf(ui.editingProjectId);
+    if (!project) return;
+    const count = data.tasks.filter(t => t.projectId === project.id).length;
+    if (!confirm(`「${project.name}」を削除します。${count ? `所属する ${count} 件のタスクも一緒に消えます。` : ""}よろしいですか？`)) return;
+    data.tasks = data.tasks.filter(t => t.projectId !== project.id);
+    data.projects = data.projects.filter(p => p.id !== project.id);
+    if (data.settings.filter.type === "project" && data.settings.filter.value === project.id) {
+      data.settings.filter = { type: "smart", value: "all" };
+    }
+    save();
+    render();
+    closeModal("projectModal");
+  });
+}
+
+/* ---- キーボード ---- */
+function wireKeyboard() {
+  document.addEventListener("keydown", event => {
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName);
+    if (event.key === "Escape") {
+      const openOverlay = document.querySelector(".overlay.open");
+      if (openOverlay) { closeModal(openOverlay.id); return; }
+      if ($("drawer").classList.contains("open")) { closeDrawer(); return; }
+      if (typing) event.target.blur();
+      return;
+    }
+    if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
+
+    const order = sortTasks(visibleTasks());
+    const index = order.findIndex(t => t.id === ui.selectedId);
+    const selected = taskById(ui.selectedId);
+
+    if (event.key === "n") { event.preventDefault(); $("quickAddInput").focus(); return; }
+    if (event.key === "/") { event.preventDefault(); $("searchInput").focus(); return; }
+    if (event.key === "ArrowDown" || event.key === "j") {
+      event.preventDefault();
+      ui.selectedId = order[Math.min(index + 1, order.length - 1)]?.id ?? order[0]?.id ?? null;
+      renderMain(); return;
+    }
+    if (event.key === "ArrowUp" || event.key === "k") {
+      event.preventDefault();
+      ui.selectedId = order[Math.max(index - 1, 0)]?.id ?? order[0]?.id ?? null;
+      renderMain(); return;
+    }
+    if (!selected) return;
+    if (event.key === "e" || event.key === "Enter") { event.preventDefault(); openDrawer(selected.id); }
+    else if (event.key === " ") { event.preventDefault(); toggleDone(selected); }
+    else if (["1", "2", "3"].includes(event.key)) { setStatus(selected, STATUSES[Number(event.key) - 1].id); }
+    else if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); deleteTask(selected); }
+  });
+}
+
+/* ============================================================
+   8. 起動
+   ============================================================ */
+function boot() {
+  load();
+  license = loadLicense();
+  document.documentElement.dataset.theme = data.settings.theme === "dark" ? "dark" : "light";
+  wireEvents();
+  render();
+  // タブを閉じる・再読み込みするときに書き残しをなくす
+  window.addEventListener("pagehide", flushSave);
+  window.addEventListener("beforeunload", flushSave);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) flushSave(); });
+  // 別のタブで編集された場合に取り込む
+  window.addEventListener("storage", event => {
+    if (event.key !== STORAGE_KEY) return;
+    load();
+    render();
+  });
+}
+
+boot();
+</script>
+</body>
+</html>

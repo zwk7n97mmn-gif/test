@@ -76,3 +76,11 @@ python tests/test_logic.py         # ロジックのテスト
 メラビアンの法則など、SNS で人気だが追試に失敗した「心理学ネタ」は
 意図的に除外しています。除外した項目とその理由は
 [docs/EDITORIAL.md](docs/EDITORIAL.md) に一覧があります。
+
+---
+
+## このリポジトリのもうひとつの成果物
+
+`taskdeck/` に、単体の HTML ファイルで動くタスク管理ツール **TaskDeck** と、
+その販売一式（販売ページ・ライセンス発行の仕組み・規約・マニュアル）が入っています。
+上の自動投稿の仕組みとは独立して動きます。詳しくは [taskdeck/README.md](taskdeck/README.md) をご覧ください。

@@ -1,0 +1,69 @@
+name: TaskDeck 検証
+
+# 販売物が壊れた状態でマージされるのを防ぐ。
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "taskdeck/**"
+      - ".github/workflows/taskdeck.yml"
+  pull_request:
+    paths:
+      - "taskdeck/**"
+      - ".github/workflows/taskdeck.yml"
+
+jobs:
+  license:
+    name: ライセンスの発行と検証
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # 発行（Python）と検証（アプリ内の JavaScript）が食い違っていないか確かめる
+      - run: python tests/test_license.py
+        working-directory: taskdeck
+
+  ui:
+    name: 画面操作の確認
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: ブラウザを用意する
+        run: |
+          npm install playwright
+          npx playwright install --with-deps chromium
+      - name: 実際のブラウザで操作してみる
+        run: node taskdeck/tests/ui_smoke.mjs
+
+  package:
+    name: 配布物の組み立て
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # 公開鍵は各販売者が自分で入れるため、CI では使い捨ての鍵で通しておく
+      - name: 使い捨ての鍵で ZIP まで作れることを確かめる
+        run: |
+          python taskdeck/tools/keygen.py init
+          bash taskdeck/tools/build.sh
+          unzip -l taskdeck/dist/taskdeck-1.0.0.zip
+      - name: 秘密鍵が配布物に混ざっていないか確認する
+        run: |
+          if unzip -p taskdeck/dist/taskdeck-1.0.0.zip | grep -q "private_key"; then
+            echo "配布物に秘密鍵が含まれています" >&2
+            exit 1
+          fi
+          echo "秘密鍵の混入なし"

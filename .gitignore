@@ -3,3 +3,9 @@ __pycache__/
 .venv/
 venv/
 .env
+
+# TaskDeck: 秘密鍵と発行台帳、配布物、テスト用の依存
+taskdeck/keys/
+taskdeck/dist/
+node_modules/
+package-lock.json
