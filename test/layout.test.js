@@ -120,11 +120,19 @@ test('sizingSource は縦横比を先頭素材、解像度を最大の動画素�
   assert.equal(Math.round(src.height), 1920);
 });
 
-test('sizingSource は先頭素材の縦横比を保つ', () => {
-  // 先頭が 1:1、動画の長辺が 4000 → 4000x4000 相当
-  const src = sizingSource([asset(1000, 1000, 'image'), asset(4000, 2250)]);
-  assert.equal(Math.round(src.width), 4000);
-  assert.equal(Math.round(src.height), 4000);
+test('sizingSource は動画があれば縦横比も動画に合わせる', () => {
+  // 2:3 の写真が先頭・9:16 の動画が 2 番目でも、どちらとも一致しない
+  // 中途半端な出力（1280x1920 など）を作らない
+  const src = sizingSource([asset(1280, 1920, 'image'), asset(1080, 1920)]);
+  assert.equal(Math.round(src.width), 1080);
+  assert.equal(Math.round(src.height), 1920);
+});
+
+test('sizingSource は先頭の動画の縦横比を、最大の動画の解像度で返す', () => {
+  // 先頭 16:9 の 1280x720、2 番目に長辺 3840 の動画 → 3840x2160
+  const src = sizingSource([asset(1280, 720), asset(3840, 1600)]);
+  assert.equal(Math.round(src.width), 3840);
+  assert.equal(Math.round(src.height), 2160);
 });
 
 test('sizingSource は画像だけを理由に動画を引き伸ばさない', () => {

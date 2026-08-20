@@ -55,13 +55,19 @@ export function evenSize(value, min = 2) {
 /**
  * 出力サイズを決める基準となる「素材の寸法」を求める。
  *
- * - **縦横比**は代表素材（先頭）に合わせる。`aspect: 'source'` の意味を素直に保つため。
- * - **解像度**は動画素材のうち最も大きいものに合わせる。動画が無ければ画像で決める。
+ * 動画があれば**動画だけ**を基準にする（無ければ画像で決める）。
+ *
+ * - **縦横比**は基準素材のうち先頭のもの。
+ * - **解像度**は基準素材のうち長辺が最大のもの。
  *
  * 先頭素材だけで決めると、小さい画像を先頭に置いただけで後ろの高解像度動画まで
  * 縮んでしまう。かといって全素材の最大に合わせると、4K 写真を 1 枚混ぜただけで
  * 1080p の動画が 4K へ引き伸ばされ、ファイルサイズと書き出し時間だけが増える。
- * 実際の編集ソフトと同じく「出力解像度は素材動画に従う」を採る。
+ * 実際の編集ソフトと同じく「出力は素材動画に従う」を採る。
+ *
+ * 縦横比と解像度で基準を変えないのも重要で、たとえば 2:3 の写真が先頭・
+ * 9:16 の動画が 2 番目という並びで両者を混ぜると、どちらの素材とも一致しない
+ * 1280×1920 のような出力ができてしまう。
  *
  * @param {object[]} assets
  * @param {{width:number, height:number}} fallback 素材が無いときの既定
@@ -70,17 +76,17 @@ export function evenSize(value, min = 2) {
 export function sizingSource(assets, fallback = { width: 1280, height: 720 }) {
   const list = (assets || []).filter((a) => a && a.width > 0 && a.height > 0);
   if (!list.length) return { ...fallback };
-  // 解像度は動画素材で決める。動画が 1 本も無ければ画像で決める。
+  // 動画があれば動画だけを基準にする。1 本も無ければ画像で決める。
   const videos = list.filter((a) => a.kind !== 'image');
   const basis = videos.length ? videos : list;
 
-  const primary = list[0];
-  const primaryLongest = Math.max(primary.width, primary.height);
+  const reference = basis[0];
+  const referenceLongest = Math.max(reference.width, reference.height);
   let longest = 0;
   for (const asset of basis) longest = Math.max(longest, asset.width, asset.height);
 
-  const scale = longest / primaryLongest;
-  return { width: primary.width * scale, height: primary.height * scale };
+  const scale = longest / referenceLongest;
+  return { width: reference.width * scale, height: reference.height * scale };
 }
 
 /**

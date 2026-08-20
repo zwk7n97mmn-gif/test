@@ -7,8 +7,23 @@ import { clamp } from '../core/util.js';
 
 export const SUPPORTED_TYPES = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-matroska', 'video/ogg'];
 export const MAX_RECOMMENDED_BYTES = 2 * 1024 ** 3;
-/** 解析するフレーム数の上限（長尺でメモリと解析時間が発散しないようにする） */
-export const MAX_ANALYSIS_FRAMES = 1200;
+/**
+ * 解析するフレーム数の上限。
+ *
+ * シーク 1 回のコストが解析時間を支配する。スマートフォンで HEVC の .mov を
+ * シークすると 1 回あたり数百 ms かかることがあり、かつては 1200 回シークしていたため
+ * 実質終わらなかった。シーン検出とサムネイル候補にはこの粒度で十分。
+ */
+export const MAX_ANALYSIS_FRAMES = 240;
+
+/**
+ * フレーム解析に使える時間の上限。
+ *
+ * 端末の速さは事前に分からないので、上限を決めて**間隔を動的に広げる**。
+ * 途中で打ち切ると動画の後半だけ解析されないことになるため、
+ * 「粗くしてでも最後まで見る」方を選ぶ。
+ */
+export const ANALYSIS_FRAME_BUDGET_MS = 40_000;
 
 /**
  * File から <video> を作り、メタデータを取得する。
@@ -213,6 +228,7 @@ export async function sampleFrames(video, options) {
   const interval = Math.max(0.05, options.intervalSec ?? 0.25);
   const w = options.width ?? 64;
   const h = options.height ?? 36;
+  const budgetMs = Math.max(3000, options.budgetMs ?? ANALYSIS_FRAME_BUDGET_MS);
   const frames = [];
   if (duration <= 0) return frames;
 
@@ -226,27 +242,66 @@ export async function sampleFrames(video, options) {
   const wasPaused = video.paused;
   if (!wasPaused) video.pause();
 
-  for (let i = 0; i < times.length; i += 1) {
+  const startedAt = nowMs();
+  let attempts = 0;
+  let misses = 0;
+  let coarsened = false;
+  let index = 0;
+
+  while (index < times.length) {
     if (options.signal?.aborted) throw makeAbortError();
-    const t = times[i];
-    const ok = await seekTo(video, t);
-    if (!ok) continue;
-    ctx.drawImage(video, 0, 0, w, h);
-    let imageData;
-    try {
-      imageData = ctx.getImageData(0, 0, w, h);
-    } catch {
-      throw new Error('フレームを読み取れませんでした（セキュリティ制限）。ローカルファイルを直接選択してください。');
+    const t = times[index];
+
+    // 最初のシークはデコーダの準備を含むため長めに待つ
+    const ok = await seekTo(video, t, attempts === 0 ? 10000 : 3000);
+    attempts += 1;
+
+    if (ok) {
+      misses = 0;
+      ctx.drawImage(video, 0, 0, w, h);
+      let imageData;
+      try {
+        imageData = ctx.getImageData(0, 0, w, h);
+      } catch {
+        throw new Error('フレームを読み取れませんでした（セキュリティ制限）。ローカルファイルを直接選択してください。');
+      }
+      const quality = frameQuality(imageData.data, w, h);
+      frames.push({ t, hist: frameHistogram(imageData.data), ...quality });
+    } else {
+      misses += 1;
+      // シークがまったく通らない素材（非対応コーデックなど）で延々と待たない
+      if (misses >= 4 && !frames.length) {
+        throw new Error('この動画のフレームを読み取れませんでした。対応していない映像コーデックの可能性があります（音声と字幕の解析は利用できます）。');
+      }
+      if (misses >= 8) break;
     }
-    const quality = frameQuality(imageData.data, w, h);
-    frames.push({ t, hist: frameHistogram(imageData.data), ...quality });
-    if (options.onProgress && i % 4 === 0) options.onProgress((i + 1) / times.length);
+
+    options.onProgress?.({
+      ratio: Math.min(1, (index + 1) / times.length),
+      done: frames.length,
+      total: times.length,
+    });
+
+    // 残り時間に収まるよう歩幅を決め直す。
+    // 遅い端末では間隔が広がるだけで、動画の最後までは必ず到達する。
+    const elapsed = nowMs() - startedAt;
+    const perFrame = elapsed / attempts;
+    const slots = Math.max(1, Math.floor((budgetMs - elapsed) / Math.max(1, perFrame)));
+    const remaining = times.length - index - 1;
+    const stride = Math.max(1, Math.ceil(remaining / slots));
+    if (stride > 1) coarsened = true;
+    index += stride;
   }
-  options.onProgress?.(1);
-  return frames;
+
+  options.onProgress?.({ ratio: 1, done: frames.length, total: times.length });
+  return { frames, coarsened, planned: times.length };
 }
 
-function seekTo(video, time, timeoutMs = 4000) {
+function nowMs() {
+  return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+}
+
+function seekTo(video, time, timeoutMs = 3000) {
   return new Promise((resolve) => {
     let settled = false;
     const done = (ok) => {
@@ -308,13 +363,28 @@ export async function analyzeMedia({ file, video, duration, audioContext, signal
   if (signal?.aborted) throw makeAbortError();
 
   stage('フレームを解析中…', 0.45);
-  const frames = await sampleFrames(video, {
-    duration,
-    // 長尺でもフレーム数の上限を超えないよう間隔を自動的に広げる（メモリと時間の上限）
-    intervalSec: clamp(duration / MAX_ANALYSIS_FRAMES, 0.25, 3),
-    signal,
-    onProgress: (r) => stage('フレームを解析中…', 0.45 + r * 0.45),
-  });
+  let frames = [];
+  try {
+    const sampled = await sampleFrames(video, {
+      duration,
+      // 長尺でもフレーム数の上限を超えないよう間隔を自動的に広げる（メモリと時間の上限）。
+      // 上限を 3 秒にしていた頃は 20 分の動画で 400 枚になり、上限 240 枚が効いていなかった。
+      intervalSec: clamp(duration / MAX_ANALYSIS_FRAMES, 0.25, 10),
+      signal,
+      // 進捗には必ず「何枚目か」を添える。割合だけだと長い間 45% のまま動かず、
+      // 止まっているのか進んでいるのか分からない。
+      onProgress: ({ ratio, done, total }) => stage(`フレームを解析中…（${done} / ${total} 枚）`, 0.45 + ratio * 0.45),
+    });
+    frames = sampled.frames;
+    if (sampled.coarsened) {
+      warnings.push('この端末では映像の読み取りに時間がかかるため、フレームの解析間隔を広げました（シーン検出とサムネイル候補が粗くなります）。');
+    }
+  } catch (error) {
+    // 映像が読めなくても、音声から作った字幕とカットは使える。
+    // ここで全体を失敗させると、解析済みの音声まで捨てることになる。
+    if (error.name === 'AbortError') throw error;
+    warnings.push(`${error.message}`);
+  }
 
   stage('シーンを判定中…', 0.92);
   const scenes = detectScenes(frames, duration);
