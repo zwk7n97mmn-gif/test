@@ -1,7 +1,7 @@
 # 心理学の豆知識アカウント
 
 心理学の研究知見を、Bluesky と X に **1 日 2 回（8:00 / 21:00 JST）** 自動投稿します。
-サーバー不要、依存パッケージゼロ、GitHub Actions だけで動きます。
+サーバー不要、GitHub Actions だけで動きます。
 
 ## 状態
 
@@ -11,7 +11,7 @@
 | カテゴリ | 記憶・学習 / 認知バイアス / 対人・社会 / 感情・メンタル / 習慣・行動変容 / 意思決定 / 睡眠・身体 / 仕事・生産性 |
 | 投稿先 | Bluesky、X（片方だけでも動作） |
 | 出典 | 全 180 件に査読論文の出典あり |
-| 依存 | なし（Python 3.11 標準ライブラリのみ） |
+| 依存 | 投稿側はなし（Python 3.11 標準ライブラリのみ）。AI アシスタントのみ `anthropic` を使う |
 
 ## はじめかた
 
@@ -38,6 +38,17 @@ GitHub Actions (cron: 23:00 / 12:00 UTC)
 180 件を一巡するまで同じ内容は出ず、一巡すると順序を変えて次の巡回に入ります。
 順序は巡回番号から決定的に生成されるため、状態ファイルが壊れても復元できます。
 
+詳しくは [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+
+## Issue で AI に質問できます
+
+Issue を立てて **`help-AI`** ラベルを付けると、このリポジトリの資料
+（README・docs・src・ワークフロー）を読んだ AI がコメントで答えます。
+そのままコメントを続ければ会話になります。
+
+セットアップに必要なのは Secret `ANTHROPIC_API_KEY` の登録とラベルの作成だけです。
+費用・制限・止め方は [docs/AI-ASSISTANT.md](docs/AI-ASSISTANT.md)。
+
 ## ディレクトリ
 
 ```
@@ -49,11 +60,21 @@ src/              投稿ロジック
   xapi.py           X API v2 クライアント (OAuth 1.0a 署名を自前実装)
   textlen.py        X / Bluesky の文字数計算
   state.py          投稿履歴
+  ai_assist.py      Issue に返信する AI アシスタント (投稿とは独立)
 tests/            検証とテスト
 state/posted.json 投稿履歴（自動更新）
-docs/SETUP.md     セットアップ手順
-docs/EDITORIAL.md 編集方針・除外した俗説の一覧
+docs/             ドキュメント一式 → docs/README.md が索引
 ```
+
+## ドキュメント
+
+| 読みたいこと | ファイル |
+|---|---|
+| 動かすまでの手順 | [docs/SETUP.md](docs/SETUP.md) |
+| 運用・止め方・困ったとき | [docs/OPERATIONS.md](docs/OPERATIONS.md) |
+| 設計 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| 豆知識の書き方・除外した俗説 | [docs/EDITORIAL.md](docs/EDITORIAL.md) |
+| Issue の AI アシスタント | [docs/AI-ASSISTANT.md](docs/AI-ASSISTANT.md) |
 
 ## 手元で試す
 

@@ -1,0 +1,66 @@
+name: AI アシスタント
+
+# Issue に help-AI ラベルを付けると、リポジトリの資料を読んだ AI が返信する。
+# ラベルの付いた Issue に人がコメントすると、そのまま会話を続けられる。
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: "対象の Issue 番号"
+        required: true
+      dry_run:
+        description: "投稿せずログに返信案を出すだけ"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read   # 資料 (README / docs / src) を読むため
+  issues: write    # 返信コメントを投稿するため
+
+# 同じ Issue で 2 つ走ると返信が二重になるため直列化する。
+concurrency:
+  group: ai-assist-${{ github.event.issue.number || inputs.issue }}
+  cancel-in-progress: false
+
+jobs:
+  respond:
+    # 反応するのは次の 3 つだけ:
+    #   1. help-AI ラベルが付いた瞬間
+    #   2. ラベルの付いた Issue への「人間の」コメント
+    #   3. 手動実行
+    # bot のコメントに反応させると延々と返信し合うので、必ず除外する。
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issues' && github.event.label.name == 'help-AI') ||
+      (github.event_name == 'issue_comment' &&
+       github.event.comment.user.type != 'Bot' &&
+       contains(github.event.issue.labels.*.name, 'help-AI'))
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: SDK を入れる
+        # このワークフローだけの依存。定期投稿 (post.yml) は標準ライブラリのみで動く。
+        # メジャー更新で黙って壊れないよう上限を切っておく。
+        run: pip install "anthropic>=0.125,<1"
+
+      - name: 返信する
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 外部から来る値は run: に直接埋め込まず、環境変数を経由させる。
+          ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          ARGS="--issue $ISSUE_NUMBER"
+          if [ "$DRY_RUN" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          python src/ai_assist.py $ARGS
