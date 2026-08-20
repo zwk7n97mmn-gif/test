@@ -11,7 +11,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-import ai_assist  # noqa: E402
 import bluesky  # noqa: E402
 import tips as tips_mod  # noqa: E402
 import xapi  # noqa: E402
@@ -177,56 +176,6 @@ def test_lengths() -> None:
     check(len(categories) >= 5, f"カテゴリ数 {len(categories)}")
 
 
-def _issue(number: int, body: str, login: str = "owner") -> dict:
-    return {"number": number, "title": "テスト", "body": body, "user": {"login": login}}
-
-
-def _comment(login: str, body: str) -> dict:
-    return {"user": {"login": login}, "body": body}
-
-
-def test_ai_assist() -> None:
-    """Issue の会話履歴組み立て。ネットワークにも Claude にも触らない。"""
-    print("AI アシスタント:")
-
-    bot = ai_assist.BOT_LOGIN
-
-    # Issue 本文だけ
-    msgs = ai_assist.build_messages(_issue(1, "X で 403 が出ます"), [])
-    check(len(msgs) == 1 and msgs[0]["role"] == "user", "Issue 本文が最初の user 発言")
-    check("403" in msgs[0]["content"], "本文が引き継がれる")
-
-    # 人 → bot → 人 が交互になる
-    msgs = ai_assist.build_messages(
-        _issue(2, "質問です"),
-        [_comment("owner", "補足です"), _comment(bot, "回答です"), _comment("owner", "追加で")],
-    )
-    roles = [m["role"] for m in msgs]
-    check(roles == ["user", "assistant", "user"], f"役割が交互 {roles}")
-    check("補足です" in msgs[0]["content"], "連続する user 発言がまとまる")
-
-    # 末尾が bot のままだと「書きかけの続き」を求める形になるので user を足す
-    msgs = ai_assist.build_messages(
-        _issue(3, "質問です"), [_comment(bot, "回答です")]
-    )
-    check(msgs[-1]["role"] == "user", "末尾が user になる")
-
-    # 空コメントは履歴に入れない
-    msgs = ai_assist.build_messages(_issue(4, "質問です"), [_comment("owner", "   ")])
-    check(len(msgs) == 1, "空コメントは無視される")
-
-    # 自分の署名を会話履歴に持ち込まない
-    signed = "回答です" + ai_assist.FOOTER
-    check(ai_assist.strip_footer(signed) == "回答です", "署名を取り除く")
-    check(ai_assist.strip_footer("署名なし") == "署名なし", "署名がなければそのまま")
-
-    # 資料が実際に集まる
-    reference = ai_assist.load_reference()
-    for name in ("README.md", "docs/SETUP.md", "src/post.py"):
-        check(f"===== {name} =====" in reference, f"資料に {name} が入る")
-    check(ai_assist.context_size(reference, msgs) > len(reference), "文字数を数えられる")
-
-
 def main() -> int:
     for test in (
         test_oauth_signature,
@@ -234,7 +183,6 @@ def main() -> int:
         test_rotation,
         test_category_spacing,
         test_lengths,
-        test_ai_assist,
     ):
         test()
 

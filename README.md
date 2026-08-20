@@ -11,7 +11,7 @@
 | カテゴリ | 記憶・学習 / 認知バイアス / 対人・社会 / 感情・メンタル / 習慣・行動変容 / 意思決定 / 睡眠・身体 / 仕事・生産性 |
 | 投稿先 | Bluesky、X（片方だけでも動作） |
 | 出典 | 全 180 件に査読論文の出典あり |
-| 依存 | 投稿側はなし（Python 3.11 標準ライブラリのみ）。AI アシスタントのみ `anthropic` を使う |
+| 依存 | なし（Python 3.11 標準ライブラリのみ） |
 
 ## はじめかた
 
@@ -42,12 +42,12 @@ GitHub Actions (cron: 23:00 / 12:00 UTC)
 
 ## Issue で AI に質問できます
 
-Issue を立てて **`help-AI`** ラベルを付けると、このリポジトリの資料
-（README・docs・src・ワークフロー）を読んだ AI がコメントで答えます。
-そのままコメントを続ければ会話になります。
+Issue を立てて **`help-AI`** ラベルを付けると、このリポジトリを読んだ Claude が
+コメントで答えます。続けて聞くときはコメントに `@claude` を付けます。
 
-セットアップに必要なのは Secret `ANTHROPIC_API_KEY` の登録とラベルの作成だけです。
-費用・制限・止め方は [docs/AI-ASSISTANT.md](docs/AI-ASSISTANT.md)。
+公式の [Claude Code Action](https://github.com/anthropics/claude-code-action) を
+**Claude サブスクリプションの認証**で動かすため、API の従量課金は発生しません。
+セットアップ・費用・止め方は [docs/AI-ASSISTANT.md](docs/AI-ASSISTANT.md)。
 
 ## ディレクトリ
 
@@ -60,10 +60,10 @@ src/              投稿ロジック
   xapi.py           X API v2 クライアント (OAuth 1.0a 署名を自前実装)
   textlen.py        X / Bluesky の文字数計算
   state.py          投稿履歴
-  ai_assist.py      Issue に返信する AI アシスタント (投稿とは独立)
 tests/            検証とテスト
 state/posted.json 投稿履歴（自動更新）
 docs/             ドキュメント一式 → docs/README.md が索引
+CLAUDE.md         AI に渡すリポジトリの前提と答え方
 ```
 
 ## ドキュメント
