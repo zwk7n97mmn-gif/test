@@ -16,7 +16,7 @@ import { timelineDuration, timelineToSource } from '../core/autoedit.js';
 import { cueAt } from '../core/subtitles.js';
 import { projectCuesToTimeline } from '../core/autoedit.js';
 import { clamp } from '../core/util.js';
-import { evenSize, resolveOutputSize } from '../core/layout.js';
+import { evenSize, resolveOutputSize, sizingSource } from '../core/layout.js';
 import { drawSubtitle, drawVideoFrame } from './render.js';
 import { decodeForExport, renderTimelineAudio, toPlanarBlocks } from './audio-offline.js';
 import { createFrameSource } from './framesource.js';
@@ -143,7 +143,7 @@ export async function renderWithCodecs(opt) {
   // 出力サイズは「向き」の設定から決める（横素材から縦動画も作れる）
   const size = resolveOutputSize(
     { ...project.output, maxSize: opt.maxSize ?? project.output?.maxSize },
-    project.media || { width: 1280, height: 720 },
+    sizingSource(project.assets),
   );
   const width = evenSize(size.width);
   const height = evenSize(size.height);

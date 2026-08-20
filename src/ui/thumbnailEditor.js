@@ -5,7 +5,7 @@
 
 import { THUMBNAIL_SIZE, rankThumbnailCandidates, suggestThumbnailTitle } from '../core/thumbnail.js';
 import { findAsset } from '../core/assets.js';
-import { resolveOutputSize } from '../core/layout.js';
+import { resolveOutputSize, sizingSource } from '../core/layout.js';
 import { assetAnalysis } from '../core/project.js';
 import { clamp, describeError, formatTime } from '../core/util.js';
 import { drawThumbnail } from '../media/render.js';
@@ -48,7 +48,7 @@ export function createThumbnailEditor({ store, getThumbElement, getAssetUrl }) {
   /** プレビュー canvas を出力の向きへ合わせる */
   function syncPreviewSize() {
     const state = store.getState();
-    const size = resolveOutputSize(state.output, state.media || { width: 1280, height: 720 });
+    const size = resolveOutputSize(state.output, sizingSource(state.assets));
     const ratio = size.width / size.height;
     const width = ratio >= 1 ? THUMBNAIL_SIZE.width : Math.round(THUMBNAIL_SIZE.height * ratio);
     const height = ratio >= 1 ? Math.round(THUMBNAIL_SIZE.width / ratio) : THUMBNAIL_SIZE.height;

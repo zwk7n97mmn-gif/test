@@ -22,6 +22,12 @@ export const FITS = Object.freeze({
   cover: { id: 'cover', label: '画面いっぱい', hint: '余白は出ませんが端が切れます' },
 });
 
+/**
+ * 出力の長辺として許す最大値（4K）。
+ * これ以上は端末のエンコーダが受け付けないことが多く、実用的な上限でもある。
+ */
+export const MAX_OUTPUT_SIZE = 3840;
+
 /** 余白の埋め方 */
 export const BACKGROUNDS = Object.freeze({
   blur: { id: 'blur', label: 'ぼかし', hint: '素材を引き伸ばしてぼかした背景' },
@@ -33,8 +39,12 @@ export const OUTPUT_DEFAULTS = Object.freeze({
   aspect: 'source',
   fit: 'contain',
   background: 'blur',
-  /** 長辺の上限（端末の負荷とファイルサイズを抑える） */
-  maxSize: 1920,
+  /**
+   * 長辺の上限。既定は「素材のまま」を意味する上限値。
+   * 実際には拡大しないので、素材が小さければ出力も小さい。
+   * 端末の負荷を下げたいときは書き出しパネルで 1080 などへ落とせる。
+   */
+  maxSize: MAX_OUTPUT_SIZE,
 });
 
 /** 偶数へ丸める（映像エンコーダは奇数サイズを嫌う） */
@@ -43,15 +53,46 @@ export function evenSize(value, min = 2) {
 }
 
 /**
+ * 出力サイズを決める基準となる「素材の寸法」を求める。
+ *
+ * - **縦横比**は代表素材（先頭）に合わせる。`aspect: 'source'` の意味を素直に保つため。
+ * - **解像度**は動画素材のうち最も大きいものに合わせる。動画が無ければ画像で決める。
+ *
+ * 先頭素材だけで決めると、小さい画像を先頭に置いただけで後ろの高解像度動画まで
+ * 縮んでしまう。かといって全素材の最大に合わせると、4K 写真を 1 枚混ぜただけで
+ * 1080p の動画が 4K へ引き伸ばされ、ファイルサイズと書き出し時間だけが増える。
+ * 実際の編集ソフトと同じく「出力解像度は素材動画に従う」を採る。
+ *
+ * @param {object[]} assets
+ * @param {{width:number, height:number}} fallback 素材が無いときの既定
+ * @returns {{width:number, height:number}}
+ */
+export function sizingSource(assets, fallback = { width: 1280, height: 720 }) {
+  const list = (assets || []).filter((a) => a && a.width > 0 && a.height > 0);
+  if (!list.length) return { ...fallback };
+  // 解像度は動画素材で決める。動画が 1 本も無ければ画像で決める。
+  const videos = list.filter((a) => a.kind !== 'image');
+  const basis = videos.length ? videos : list;
+
+  const primary = list[0];
+  const primaryLongest = Math.max(primary.width, primary.height);
+  let longest = 0;
+  for (const asset of basis) longest = Math.max(longest, asset.width, asset.height);
+
+  const scale = longest / primaryLongest;
+  return { width: primary.width * scale, height: primary.height * scale };
+}
+
+/**
  * 出力サイズを決める。
  *
  * @param {{aspect?:string, maxSize?:number}} output
- * @param {{width:number, height:number}} source 代表素材のサイズ
+ * @param {{width:number, height:number}} source 基準となる素材サイズ（`sizingSource()`）
  * @returns {{width:number, height:number, ratio:number}}
  */
 export function resolveOutputSize(output, source) {
   const cfg = { ...OUTPUT_DEFAULTS, ...(output || {}) };
-  const maxSize = clamp(cfg.maxSize, 240, 3840);
+  const maxSize = clamp(cfg.maxSize, 240, MAX_OUTPUT_SIZE);
   const sw = Math.max(1, Math.round(toFinite(source?.width, 1280)));
   const sh = Math.max(1, Math.round(toFinite(source?.height, 720)));
 

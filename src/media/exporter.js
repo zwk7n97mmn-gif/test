@@ -12,7 +12,7 @@ import { clamp } from '../core/util.js';
 import { TimelinePlayer } from './player.js';
 import { drawThumbnail } from './render.js';
 import { createDetachedRuntime } from './assetstore.js';
-import { resolveOutputSize } from '../core/layout.js';
+import { resolveOutputSize, sizingSource } from '../core/layout.js';
 import { findAsset } from '../core/assets.js';
 import { describeFormat, hasWebCodecs, probeCodecs, renderWithCodecs } from './encoder.js';
 
@@ -102,7 +102,7 @@ function abortError() {
  */
 export async function renderVideo(opt) {
   const project = opt.project;
-  const outputSize = resolveOutputSize(project.output, project.media || { width: 1280, height: 720 });
+  const outputSize = resolveOutputSize(project.output, sizingSource(project.assets));
   const plan = opt.plan || (await resolveExportPlan({
     width: outputSize.width,
     height: outputSize.height,
@@ -130,7 +130,7 @@ export async function renderVideoWithMediaRecorder(opt) {
   if (totalSec <= 0) throw new Error('書き出す区間がありません。クリップを 1 つ以上有効にしてください。');
   if (opt.signal?.aborted) throw abortError();
 
-  const size = resolveOutputSize(project.output, project.media || { width: 1280, height: 720 });
+  const size = resolveOutputSize(project.output, sizingSource(project.assets));
   const width = size.width;
   const height = size.height;
   const fps = clamp(Math.round(opt.fps || project.media?.fps || 30), 1, 60);
@@ -261,7 +261,7 @@ export async function renderVideoWithMediaRecorder(opt) {
 export async function renderThumbnail(project, sourceUrl, opt = {}) {
   if (!sourceUrl) throw new Error('素材が読み込まれていません。');
   const asset = findAsset(project.assets, project.thumbnail.sourceAssetId) || project.media;
-  const outputSize = resolveOutputSize(project.output, project.media || { width: 1280, height: 720 });
+  const outputSize = resolveOutputSize(project.output, sizingSource(project.assets));
   const ratio = outputSize.width / outputSize.height;
   const width = opt.width ?? (ratio >= 1 ? THUMBNAIL_SIZE.width : Math.round(THUMBNAIL_SIZE.height * ratio));
   const height = opt.height ?? (ratio >= 1 ? Math.round(THUMBNAIL_SIZE.width / ratio) : THUMBNAIL_SIZE.height);

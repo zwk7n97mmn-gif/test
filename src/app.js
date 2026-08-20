@@ -5,7 +5,7 @@
 
 import { buildCutPlanForClips, editSummary, layoutClips, sanitizeClips, splitAt, timelineDuration, timelineToSource } from './core/autoedit.js';
 import { IMAGE_DURATION_RANGE, clipsFromAssets, findAsset, moveAsset, removeAsset, setImageDuration } from './core/assets.js';
-import { ASPECTS, BACKGROUNDS, FITS, describeFraming, resolveOutputSize } from './core/layout.js';
+import { ASPECTS, BACKGROUNDS, FITS, MAX_OUTPUT_SIZE, describeFraming, resolveOutputSize, sizingSource } from './core/layout.js';
 import { buildAudioPlan, describeAudioPlan } from './core/audio.js';
 import { analysisWarnings, assetAnalysis, createPersistence, createProject, createStore, isAnalysisDone, pendingAnalysisAssets, speechByAsset } from './core/project.js';
 import { STT_PROVIDERS, alignTextToSegments, transcribeRemote, transcribeWithVad } from './core/stt.js';
@@ -310,7 +310,8 @@ async function reanalyzeAll() {
 
 /** 出力の向き・フィット・余白の設定 */
 function renderOutputSettings(state) {
-  const source = state.media || { width: 1280, height: 720 };
+  // 出力サイズは全素材のうち最も大きいものが基準（sizingSource）
+  const source = sizingSource(state.assets);
   const aspectSelect = select({
     label: '動画の向き',
     value: state.output.aspect,
@@ -1297,9 +1298,10 @@ function setPreviewOverlay(text) {
 
 function resizePreviewCanvas() {
   const state = store.getState();
+  // プレビューは表示できれば十分なので、長辺 1280 までに抑えて描画負荷を下げる
   const size = resolveOutputSize(
-    { ...state.output, maxSize: Math.min(state.output?.maxSize ?? 1920, 1280) },
-    state.media || { width: 1280, height: 720 },
+    { ...state.output, maxSize: Math.min(state.output?.maxSize ?? MAX_OUTPUT_SIZE, 1280) },
+    sizingSource(state.assets),
   );
   dom.preview.width = size.width;
   dom.preview.height = size.height;

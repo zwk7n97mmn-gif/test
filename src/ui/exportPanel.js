@@ -3,7 +3,7 @@
  */
 
 import { editSummary, timelineDuration } from '../core/autoedit.js';
-import { describeFraming, resolveOutputSize } from '../core/layout.js';
+import { MAX_OUTPUT_SIZE, describeFraming, resolveOutputSize, sizingSource } from '../core/layout.js';
 import { toSRT, toVTT } from '../core/subtitles.js';
 import { serializeProject } from '../core/project.js';
 import { describeError, formatTime, speakableTime } from '../core/util.js';
@@ -199,7 +199,8 @@ export function createExportPanel({ store, getAssetUrl, getAssetFile, getAssetIm
     const state = store.getState();
     const needsAudio = (state.assets || []).some((a) => a.hasAudio) || Boolean(getBgmBuffer());
     // 解析前は音声の有無が未確定なので、判定結果のキーに含めて取り直す
-    const key = `${state.media?.width}x${state.media?.height}@${state.media?.fps}:${resolution}:${needsAudio}:${state.output?.aspect}:${state.output?.fit}`;
+    const src = sizingSource(state.assets);
+    const key = `${Math.round(src.width)}x${Math.round(src.height)}@${state.media?.fps}:${resolution}:${needsAudio}:${state.output?.aspect}:${state.output?.fit}`;
     if (cachedPlan && cachedPlan.key === key) return cachedPlan.plan;
     const target = resolutionSize(state, resolution);
     const plan = await resolveExportPlan({
@@ -217,8 +218,8 @@ export function createExportPanel({ store, getAssetUrl, getAssetFile, getAssetIm
    * 実際の縦横比は project.output（向き）が決めるので、ここではサイズだけを扱う。
    */
   function resolutionSize(state, mode) {
-    const maxSize = mode === 'source' ? (state.output?.maxSize ?? 1920) : Number(mode);
-    const size = resolveOutputSize({ ...state.output, maxSize }, state.media || { width: 1280, height: 720 });
+    const maxSize = mode === 'source' ? MAX_OUTPUT_SIZE : Number(mode);
+    const size = resolveOutputSize({ ...state.output, maxSize }, sizingSource(state.assets));
     return { ...size, maxSize };
   }
 
@@ -241,10 +242,13 @@ export function createExportPanel({ store, getAssetUrl, getAssetFile, getAssetIm
         h('dt', { text: '焼き込み字幕' }),
         h('dd', { text: `${cues} 件` }),
         h('dt', { text: '出力サイズ' }),
-        h('dd', { text: describeFraming(state.media?.width || 1280, state.media?.height || 720, {
-          ...state.output,
-          maxSize: resolutionSize(state, resolution).maxSize,
-        }) }),
+        h('dd', { text: (() => {
+          const src = sizingSource(state.assets);
+          return describeFraming(src.width, src.height, {
+            ...state.output,
+            maxSize: resolutionSize(state, resolution).maxSize,
+          });
+        })() }),
         h('dt', { text: '出力形式' }),
         formatDd,
       ]),
@@ -263,13 +267,18 @@ export function createExportPanel({ store, getAssetUrl, getAssetFile, getAssetIm
       label: '画質（長辺の上限）',
       value: resolution,
       options: [
-        { value: 'source', label: '素材に合わせる' },
+        { value: 'source', label: '素材のまま（画質優先）' },
+        { value: '1920', label: '1920（フル HD 相当）' },
         { value: '1080', label: '1080' },
         { value: '720', label: '720' },
         { value: '480', label: '480' },
       ],
+      hint: '「素材のまま」は素材の解像度をそのまま使います（拡大はしません）。4K 素材ではファイルが大きく、書き出しにも時間がかかります。',
       onChange: (v) => {
         resolution = v;
+        cachedPlan = null;
+        renderSummary();
+        renderControls(false);
       },
     });
     const startButton = button(busy ? '書き出し中…' : '動画を書き出す', { variant: 'primary', onClick: startExport });
