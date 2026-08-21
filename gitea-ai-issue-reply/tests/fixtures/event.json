@@ -1,0 +1,11 @@
+{
+  "action": "labeled",
+  "label": { "name": "help-AI" },
+  "issue": {
+    "number": 42,
+    "title": "[質問] 検索条件の初期値をどこで決めているか",
+    "user": { "login": "hanako" },
+    "labels": [{ "name": "help-AI" }, { "name": "質問" }],
+    "body": "## 概要\n検索条件の初期値が空になる件について、どこで決まっているか知りたいです。\n\n関連: #12"
+  }
+}

@@ -90,3 +90,6 @@ python tests/test_logic.py         # ロジックのテスト
 
 - 製品と販売一式: [taskdeck/README.md](taskdeck/README.md)
 - ドキュメント: [taskdeck-docs/README.md](taskdeck-docs/README.md)
+
+`gitea-ai-issue-reply/` は、Gitea にイシューを立てるとAIが調査して返信する仕組みの一式です。
+こちらも独立して動きます → [gitea-ai-issue-reply/README.md](gitea-ai-issue-reply/README.md)
