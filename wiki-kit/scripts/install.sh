@@ -39,7 +39,10 @@ for name in 汎用ページ 手順ページ 機能説明ページ コンポー�
   place "wikiの編集方法/テンプレート/$name.md" "templates/$name.md"
 done
 
+# 画像の置き場。⚠ git は空フォルダを持てないので .gitkeep を置く
+#   （置かないと、切り出し・クローンのたびに消えて「置き場が無い」状態から始まる）
 mkdir -p "$TARGET/_image/_HOME"
+[ -e "$TARGET/_image/_HOME/.gitkeep" ] || { touch "$TARGET/_image/_HOME/.gitkeep"; echo "  配置 _image/_HOME/.gitkeep"; }
 
 cat <<'NEXT'
 
