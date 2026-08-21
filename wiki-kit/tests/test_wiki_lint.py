@@ -192,6 +192,100 @@ def main() -> None:
         code, out = run(w, "--only", "links")
         check(code == 1 and "他 27 件" in out, "報告件数の上限を超えたら件数だけ出す")
 
+        # --- 画像の置き場 ---
+        w = base / "imglayout_ok"
+        build(w, "# ホーム\n\n- [部品](機能/部品.md)\n",
+              {"機能/部品.md": page("部品", body="![図](../_image/機能/部品/01.png)")},
+              files=["_image/機能/部品/01.png"])
+        code, out = run(w, "--only", "image_layout")
+        check(code == 0, "ページごとの置き場にある画像は通る")
+
+        w = base / "imglayout_shared"
+        build(w, "# ホーム\n\n- [部品](機能/部品.md)\n",
+              {"機能/部品.md": page("部品", body="![図](../_image/機能/共通.png)")},
+              files=["_image/機能/共通.png"])
+        code, out = run(w, "--only", "image_layout")
+        check(code == 0, "上の階層に置いた共有画像は通す")
+
+        w = base / "imglayout_ng"
+        build(w, "# ホーム\n\n- [部品](機能/部品.md)\n",
+              {"機能/部品.md": page("部品", body="![図](../_image/別の機能/別ページ/01.png)")},
+              files=["_image/別の機能/別ページ/01.png"])
+        code, out = run(w, "--only", "image_layout")
+        check(code == 1 and "置き場が違う" in out, "別のページの画像フォルダを参照しているのを見つける")
+
+        w = base / "imglayout_outside"
+        build(w, "# ホーム\n\n![図](画像/01.png)\n", {}, files=["画像/01.png"])
+        code, out = run(w, "--only", "image_layout")
+        check(code == 1 and "_image/ の外" in out, "_image/ の外に置かれた画像を見つける")
+
+        # --- <details> ---
+        w = base / "details_ng"
+        build(w, "# ホーム\n\n<details>\n  <summary>開く</summary>\n\n| 表 |\n| --- |\n\n</details>\n", {})
+        code, out = run(w, "--only", "details")
+        check(code == 1 and "<div>" in out, "<details> が <div> で囲まれていないのを見つける")
+
+        w = base / "details_ok"
+        build(w, "# ホーム\n\n<details>\n  <summary>開く</summary>\n  <div>\n\n| 表 |\n| --- |\n\n  </div>\n</details>\n", {})
+        code, out = run(w, "--only", "details")
+        check(code == 0, "<div> で囲まれていれば通る")
+
+        # --- アンカーの位置 ---
+        w = base / "anchor_pos"
+        build(w, '# ホーム\n\n<a id="x"></a>\n## 見出し\n\n- [飛ぶ](#x)\n', {})
+        code, out = run(w, "--only", "anchor_placement")
+        check(code == 1 and "見出し行の内側" in out, "アンカーが別行にあるのを見つける")
+
+        w = base / "anchor_pos_ok"
+        build(w, '# ホーム\n\n## <a id="x"></a>見出し\n\n- [飛ぶ](#x)\n', {})
+        code, out = run(w, "--only", "anchor_placement")
+        check(code == 0, "見出し行の内側にあれば通る")
+
+        # --- 覆う範囲（今回踏んだところ） ---
+        w = base / "mask_inline"
+        build(w, '# ホーム\n\n書き方: `## <a id="例"></a>見出し` のように書く\n', {})
+        code, out = run(w, "--only", "anchors,anchor_placement")
+        check(code == 0, "インラインコードで書いた「書き方の例」は拾わない")
+
+        w = base / "mask_lineno"
+        build(w, '# ホーム\n\n```\n例\n例\n```\n\n<a id="y"></a>\n\n[飛ぶ](#y)\n', {})
+        code, out = run(w, "--only", "anchor_placement")
+        check(code == 1 and ":8" in out, "コードブロックがあっても指摘の行番号がずれない")
+
+        w = base / "fence_quote"
+        build(w, "# ホーム\n\n> 書き方:\n> ```md\n> ![図](_image/_HOME/無い.png)\n> ```\n", {})
+        code, out = run(w, "--only", "images")
+        check(code == 0, "引用の中のコードブロックも対象外にする")
+
+        w = base / "fence_inline"
+        build(w, "# ホーム\n\n| mermaid | ` ```mermaid ` で囲む |\n| --- | --- |\n\n"
+                 "```md\n![図](_image/_HOME/無い.png)\n```\n", {})
+        code, out = run(w, "--only", "images")
+        check(code == 0, "行の途中にバッククォート3つがあってもコードブロックの対応が狂わない")
+
+        w = base / "img_inline"
+        build(w, '# ホーム\n\n`<img src="...">` はHTML属性なので囲み不要\n', {})
+        code, out = run(w, "--only", "images")
+        check(code == 0, "インラインコードで書いた img の説明は拾わない")
+
+        # ⚠ バッククォート 2 つで囲む書き方。1 つ決め打ちだと囲みがずれて中身が素通りする
+        w = base / "img_double_tick"
+        build(w, '# ホーム\n\n`` `<img src="...">` `` のような説明を拾わない\n', {})
+        code, out = run(w, "--only", "images")
+        check(code == 0, "バッククォート2つで囲んだ img の説明も拾わない")
+
+        w = base / "double_tick_link"
+        build(w, "# ホーム\n\n`` `[表示](消えたページ.md)` `` は書き方の例\n", {})
+        code, out = run(w, "--only", "anchors")
+        check(code == 0, "バッククォート2つで囲んだ中身は本物の定義として数えない")
+
+        w = base / "cross_repo"
+        build(w, "# ホーム\n\n- [別のツール](../other/README.md)\n", {})
+        (base / "other").mkdir(parents=True, exist_ok=True)
+        (base / "other" / "README.md").write_text("# 別\n", encoding="utf-8")
+        code, out = run(w, "--only", "filenames")
+        check(code == 0, "別リポジトリへのリンクは命名規約の対象にしない")
+
     print()
     if _failures:
         print(f"{len(_failures)} 件失敗しました:")

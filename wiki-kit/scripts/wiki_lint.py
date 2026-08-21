@@ -19,6 +19,9 @@
 | orphans     | どこからも辿れないページ |
 | breadcrumbs | ページ先頭の見出し・パンくずが無い |
 | images      | 画像・動画の参照先が無い／ルート起点の絶対パスになっている |
+| image_layout| 画像が「_image/ ＋ ページの配置パス ＋ ページ名」に置かれていない |
+| details     | <details> の中身が <div> で囲まれていない（表やリンクが生で出る） |
+| anchor_placement | アンカーが見出し行の外にある（直後の見出しが飲み込まれる） |
 
 設定は wiki-lint.json（無くても既定値で動く）。依存なし・Python 3.9 以上。
 """
@@ -43,6 +46,7 @@ DEFAULTS = {
     "checks": {
         "links": True, "wrapping": True, "anchors": True,
         "filenames": True, "orphans": True, "breadcrumbs": True, "images": True,
+        "image_layout": True, "details": True, "anchor_placement": True,
     },
     # 1 つの検査で並べる件数の上限（多すぎると読めないため）
     "max_report": 10,
@@ -55,8 +59,75 @@ IMAGE_ANGLE = re.compile(r"!\[[^\]\n]*\]\(<([^>\n]+)>\)")
 IMAGE_PLAIN = re.compile(r"!\[[^\]\n]*\]\(([^<>()\s]+)\)")
 SRC_TAG = re.compile(r'<(?:img|video)[^>]*\ssrc="([^"]+)"')
 ANCHOR_DEF = re.compile(r'<a id="([^"]+)">')
+DETAILS = re.compile(r"<details[^>]*>(.*?)</details>", re.S)
 ANCHOR_USE = re.compile(r"\]\(#([^)\n]+)\)")
-FENCE = re.compile(r"```.*?```", re.S)
+BACKTICK_RUN = re.compile(r"`+")
+
+
+def mask_fences(text: str) -> str:
+    """コードブロックだけを覆う。リンクの検査に使う。
+
+    ⚠ インラインコードは覆わない。`[メニュー - `main_menu_no`](…)` のように、
+      リンクの表示名そのものにインラインコードが入ることがあるため。
+    ⚠ 正規表現ではなく行単位で判定する。表の中に「` ```mermaid ` で囲む」のように
+      バッククォート 3 つを**行の途中**で書くことがあり、正規表現だと対応が狂う。
+      開始と終了のバッククォートの数も合わせる（````` で囲んだ入れ子に対応するため）。
+    """
+    output = []
+    marker = ""
+    for line in text.split("\n"):
+        # ⚠ 引用（>）の中に置いたコードブロックも見る。
+        #    「> ```md」の形で書かれることがあり、素の lstrip では拾えない
+        stripped = re.sub(r"^[>\s]*", "", line)
+        if not marker:
+            if stripped.startswith("```"):
+                marker = stripped[: len(stripped) - len(stripped.lstrip("`"))]
+                output.append(" " * len(line))
+                continue
+            output.append(line)
+        else:
+            output.append(" " * len(line))
+            if stripped.startswith(marker) and stripped.rstrip("`") == "":
+                marker = ""
+    return "\n".join(output)
+
+
+def mask_code(text: str) -> str:
+    """コードブロックとインラインコードを覆う。書き方の説明を拾わない検査に使う。
+
+    `## <a id="x"></a>見出し` のような**書き方の例**を、本物のアンカー定義として
+    数えてしまうのを防ぐ。
+    """
+    return mask_inline_code(mask_fences(text))
+
+
+def mask_inline_code(text: str) -> str:
+    """インラインコードだけを空白で覆う。⚠ 消さずに覆う（消すと行番号がずれる）。
+
+    ⚠ バッククォートの本数を数える。`` `<img src="…">` `` のように
+      **2 つ以上**で囲む書き方があり、1 つ決め打ちだと囲みがずれて
+      中身が素通りする（＝説明用の例を本物の参照として拾ってしまう）。
+    """
+    output = []
+    for line in text.split("\n"):
+        runs = [(match.start(), match.end()) for match in BACKTICK_RUN.finditer(line)]
+        chars = list(line)
+        index = 0
+        while index < len(runs):
+            start, end = runs[index]
+            width = end - start
+            # 同じ本数で閉じている所を探す。無ければ囲みではないので飛ばす
+            close = index + 1
+            while close < len(runs) and runs[close][1] - runs[close][0] != width:
+                close += 1
+            if close >= len(runs):
+                index += 1
+                continue
+            for position in range(start, runs[close][1]):
+                chars[position] = " "
+            index = close + 1
+        output.append("".join(chars))
+    return "\n".join(output)
 
 # 絵文字・異体字セレクタ・ZWJ。ファイル名からは落とす決まり
 EMOJI = re.compile(
@@ -144,7 +215,7 @@ class Linter:
     def check_links(self) -> None:
         broken = []
         for page in self.pages:
-            text = FENCE.sub("", page.read_text(encoding="utf-8"))
+            text = mask_fences(page.read_text(encoding="utf-8"))
             for _, target in [*LINK_ANGLE.findall(text), *LINK_PLAIN.findall(text)]:
                 if is_external(target):
                     continue
@@ -156,9 +227,10 @@ class Linter:
     def check_wrapping(self) -> None:
         risky = []
         for page in self.pages:
-            text = FENCE.sub("", page.read_text(encoding="utf-8"))
-            # <> で囲っていないのに、パスに括弧や空白が入っているもの
-            for match in re.finditer(r"(?<!\!)\[([^\]\n]+)\]\(([^<)\n][^)\n]*)\)", text):
+            text = mask_fences(page.read_text(encoding="utf-8"))
+            # <> で囲っていないのに、パスに括弧や空白が入っているもの。
+            # 画像（![...](...)）も同じ理由で壊れるため、まとめて見る
+            for match in re.finditer(r"!?\[([^\]\n]*)\]\(([^<)\n][^)\n]*)\)", text):
                 target = match.group(2)
                 if is_external(target):
                     continue
@@ -170,9 +242,9 @@ class Linter:
     def check_anchors(self) -> None:
         problems = []
         for page in self.pages:
-            text = page.read_text(encoding="utf-8")
-            defined = set(ANCHOR_DEF.findall(text))
-            used = set(ANCHOR_USE.findall(FENCE.sub("", text)))
+            masked = mask_code(page.read_text(encoding="utf-8"))
+            defined = set(ANCHOR_DEF.findall(masked))
+            used = set(ANCHOR_USE.findall(masked))
             for anchor in sorted(used - defined):
                 problems.append(f"{page.relative_to(self.root)}: #{anchor} の飛び先が無い")
             for anchor in sorted(defined - used):
@@ -185,12 +257,15 @@ class Linter:
         if not readme.exists():
             self.report(False, f"{self.config['readme']} がある")
             return
-        text = FENCE.sub("", readme.read_text(encoding="utf-8"))
+        text = mask_fences(readme.read_text(encoding="utf-8"))
         # 同じページを別の表記で参照することがある（本文中からの言及など）。
         # 1 つでもファイル名と揃った表記があれば、そのページは登録済みとみなす。
         labels: dict[str, list[str]] = {}
         for label, target in [*LINK_ANGLE.findall(text), *LINK_PLAIN.findall(text)]:
             if is_external(target) or not target.endswith(".md"):
+                continue
+            # 別リポジトリへのリンクは、このwikiの命名規約の対象外
+            if target.startswith("../") or ".." in Path(target).parts:
                 continue
             labels.setdefault(target, []).append(label)
         for target, texts in labels.items():
@@ -205,7 +280,7 @@ class Linter:
     def check_orphans(self) -> None:
         referenced = set()
         for page in self.pages:
-            text = FENCE.sub("", page.read_text(encoding="utf-8"))
+            text = mask_fences(page.read_text(encoding="utf-8"))
             for _, target in [*LINK_ANGLE.findall(text), *LINK_PLAIN.findall(text)]:
                 if is_external(target):
                     continue
@@ -236,8 +311,9 @@ class Linter:
     def check_images(self) -> None:
         problems = []
         for page in self.pages:
-            # 書き方の例として貼った画像で落ちないよう、コードブロックの中は見ない
-            text = FENCE.sub("", page.read_text(encoding="utf-8"))
+            # 書き方の例として貼った画像で落ちないよう、コードブロックの中は見ない。
+            # インラインコードも覆う（`<img src="...">` のような説明を拾わないため）
+            text = mask_code(page.read_text(encoding="utf-8"))
             targets = [*IMAGE_ANGLE.findall(text), *IMAGE_PLAIN.findall(text), *SRC_TAG.findall(text)]
             for target in targets:
                 if target.startswith(("http://", "https://", "data:")):
@@ -250,12 +326,80 @@ class Linter:
                     problems.append(f"{rel}: {target} … 参照先が無い")
         self.report(not problems, f"画像・動画の参照先がある（{len(problems)} 件）", problems)
 
+    def check_image_layout(self) -> None:
+        """画像は「_image/ ＋ ページの配置パス ＋ ページ名フォルダ」に置く決まり。
+
+        別のページの画像フォルダを参照していると、そのページを消したときに
+        気づかないまま画像が消える。ページを写して作ったときに起きやすい。
+        共有画像は上の階層に置けるので、祖先までは許す。
+        """
+        image_dir = self.config["image_dir"]
+        readme = (self.root / self.config["readme"]).resolve()
+        problems = []
+        for page in self.pages:
+            text = mask_code(page.read_text(encoding="utf-8"))
+            rel = page.relative_to(self.root)
+            # own … 自分のページ名フォルダ。中でサブフォルダを切ってよい（前方一致で許す）
+            # shared … 共有画像を置ける上の階層。**その直下だけ**許す
+            #          （配下すべてを許すと、別ページのフォルダを指しても通ってしまう）
+            if page.resolve() == readme:
+                own = f"{image_dir}/_HOME/"
+                shared = [f"{image_dir}/"]
+            else:
+                own = f"{image_dir}/{rel.with_suffix('').as_posix()}/"
+                parts = rel.with_suffix("").parts
+                shared = [f"{image_dir}/{'/'.join(parts[:i])}/" for i in range(len(parts) - 1, 0, -1)]
+                shared.append(f"{image_dir}/")
+            allowed = [own, *shared]
+            for target in [*IMAGE_ANGLE.findall(text), *IMAGE_PLAIN.findall(text), *SRC_TAG.findall(text)]:
+                if target.startswith(("http://", "https://", "data:", "/")):
+                    continue
+                try:
+                    resolved = (page.parent / target).resolve().relative_to(self.root).as_posix()
+                except ValueError:
+                    problems.append(f"{rel}: {target} … リポジトリの外を指している")
+                    continue
+                if not resolved.startswith(f"{image_dir}/"):
+                    problems.append(f"{rel}: {target} … {image_dir}/ の外に置かれている")
+                else:
+                    parent = str(Path(resolved).parent.as_posix()) + "/"
+                    if not (resolved.startswith(own) or parent in shared):
+                        problems.append(f"{rel}: {resolved} … 置き場が違う（期待: {own}…）")
+        self.report(not problems, f"画像がページごとの置き場にある（{len(problems)} 件）", problems)
+
+    def check_details(self) -> None:
+        """<details> の中身は <div> で囲む決まり。
+
+        囲まないと Gitea が中の Markdown を解釈せず、表やリンクが生のまま出る。
+        書いた本人のブラウザでは気づきにくい。
+        """
+        problems = []
+        for page in self.pages:
+            text = page.read_text(encoding="utf-8")
+            for index, body in enumerate(DETAILS.findall(mask_code(text)), 1):
+                if "<div>" not in body:
+                    problems.append(f"{page.relative_to(self.root)}: {index} つめの <details> が <div> で囲まれていない")
+        self.report(not problems, f"<details> の中身を <div> で囲んでいる（{len(problems)} 件）", problems)
+
+    def check_anchor_placement(self) -> None:
+        """アンカーは見出し行の内側に置く決まり。
+
+        別行に置くと HTML ブロック扱いになり、直後の見出しが飲み込まれることがある。
+        """
+        problems = []
+        for page in self.pages:
+            for number, line in enumerate(mask_code(page.read_text(encoding="utf-8")).splitlines(), 1):
+                if "<a id=" in line and not line.lstrip().startswith("#"):
+                    problems.append(f"{page.relative_to(self.root)}:{number} … 見出し行の内側に置く")
+        self.report(not problems, f"アンカーが見出し行の内側にある（{len(problems)} 件）", problems)
+
     def run(self, only: set[str] | None) -> int:
         checks = {
             "links": self.check_links, "wrapping": self.check_wrapping,
             "anchors": self.check_anchors, "filenames": self.check_filenames,
             "orphans": self.check_orphans, "breadcrumbs": self.check_breadcrumbs,
-            "images": self.check_images,
+            "images": self.check_images, "image_layout": self.check_image_layout,
+            "details": self.check_details, "anchor_placement": self.check_anchor_placement,
         }
         print(f"{self.root} を検査します（ページ {len(self.pages)} 件）\n")
         ran = 0

@@ -16,7 +16,8 @@ bash "$ROOT/scripts/install.sh" "$TMP" > /dev/null 2>&1
 check "配置できる" "$([ -f "$TMP/scripts/wiki_lint.py" ] && echo true || echo false)"
 check "決まりごとを配置する" "$([ -f "$TMP/CLAUDE.md" ] && echo true || echo false)"
 check "目次の雛形を配置する" "$([ -f "$TMP/README.md" ] && echo true || echo false)"
-check "ページの雛形を配置する" "$([ -f "$TMP/templates/汎用ページ.md" ] && echo true || echo false)"
+check "ページの雛形を配置する" "$([ -f "$TMP/wikiの編集方法/テンプレート/汎用ページ.md" ] && echo true || echo false)"
+check "人向けの書き方ページを配置する" "$([ -f "$TMP/wikiの編集方法/ページの書き方.md" ] && echo true || echo false)"
 check "CI の雛形を配置する" "$([ -f "$TMP/.gitea/workflows/wiki-lint.yml" ] && echo true || echo false)"
 check "画像の置き場を作る" "$([ -d "$TMP/_image/_HOME" ] && echo true || echo false)"
 

@@ -34,8 +34,9 @@ place ".gitea/workflows/wiki-lint.yml" "workflows/wiki-lint.yml" yes
 place "wiki-lint.json" "wiki-lint.json"
 place "CLAUDE.md" "templates/CLAUDE.md"
 place "README.md" "templates/README.md"
+place "wikiの編集方法/ページの書き方.md" "templates/ページの書き方.md"
 for name in 汎用ページ 手順ページ 機能説明ページ コンポーネント説明ページ; do
-  place "templates/$name.md" "templates/$name.md"
+  place "wikiの編集方法/テンプレート/$name.md" "templates/$name.md"
 done
 
 mkdir -p "$TARGET/_image/_HOME"
