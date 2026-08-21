@@ -92,4 +92,8 @@ python tests/test_logic.py         # ロジックのテスト
 - ドキュメント: [taskdeck-docs/README.md](taskdeck-docs/README.md)
 
 `gitea-ai-issue-reply/` は、Gitea にイシューを立てるとAIが調査して返信する仕組みの一式です。
-こちらも独立して動きます → [gitea-ai-issue-reply/README.md](gitea-ai-issue-reply/README.md)
+`repo-hub/` は、リポジトリが増えたときの入口ページと、その内容が実態から離れないようにする検査です。
+どちらも独立して動きます。
+
+- [gitea-ai-issue-reply/README.md](gitea-ai-issue-reply/README.md)
+- [repo-hub/README.md](repo-hub/README.md)
