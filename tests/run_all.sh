@@ -7,13 +7,14 @@ ROOT="$HERE/.."
 FAILED=""
 
 run() {
+  local label="$1"; shift
   echo
   echo "=============================================================="
-  echo " $1"
+  echo " $label"
   echo "=============================================================="
-  shift
+  # ⚠ shift のあとに $1 を使うと、失敗一覧に "bash" と出てしまう
   if ! "$@"; then FAILED="$FAILED
-  - $1"; fi
+  - $label"; fi
 }
 
 run "起動条件の判定"            bash "$HERE/test_gate.sh"
@@ -22,7 +23,7 @@ run "プロンプトの組み立て"      bash "$HERE/test_build_prompt.sh"
 run "Gitea API の呼び出し"      bash "$HERE/test_gitea_api.sh"
 run "Claude CLI の呼び出し"     bash "$HERE/test_run_claude.sh"
 run "一覧の食い違い検査"        python3 "$HERE/test_check_sync.py"
-run "ツリーの食い違い検査"      python3 "$HERE/test_check_tree.py"
+run "配布元との一致"            bash "$HERE/test_vendored.sh"
 run "配置ファイルの整合"        bash "$HERE/test_layout.sh"
 
 echo
