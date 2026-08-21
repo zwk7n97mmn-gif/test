@@ -1,0 +1,25 @@
+{
+  "$comment": "AI が返信のために読む参照リポジトリの一覧。移植するときはここだけ書き換える。",
+  "repos": [
+    {
+      "path": "src",
+      "repo": "your-org/your-app",
+      "ref": "main",
+      "description": "実装コード。実装に関する質問はここを読む"
+    },
+    {
+      "path": "docs",
+      "repo": "your-org/your-docs",
+      "ref": "main",
+      "description": "設計書・仕様書",
+      "sparse": ["/*", "!*.xlsx", "!*.xlsm", "!*.xls", "!*.docx", "!*.doc", "!*.pptx", "!*.zip"],
+      "sparse_note": "AI が開けない形式は落とす。clone しても読めず、時間とディスクだけ食うため"
+    },
+    {
+      "path": "wiki",
+      "repo": "your-org/your-app.wiki",
+      "ref": "main",
+      "description": "開発方針・共通仕様・運用ルール"
+    }
+  ]
+}

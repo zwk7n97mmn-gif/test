@@ -1,0 +1,17 @@
+# 改行コードの固定
+#
+# Windows で編集したワークフロー・シェルスクリプトが CRLF のままコミットされると、
+# Linux のランナーが行末の CR まで引数に含めて失敗する
+# （`set: pipefail\r: invalid option name` の形で出る）。
+#
+# ワークフローと .sh は LF 固定、Windows 専用の .cmd / .bat / .ps1 は CRLF 固定にする。
+# 新しく追加したら `git ls-files --eol <path>` で `i/lf` を確認する。
+
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.sh   text eol=lf
+*.py   text eol=lf
+
+*.cmd  text eol=crlf
+*.bat  text eol=crlf
+*.ps1  text eol=crlf

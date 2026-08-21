@@ -1,0 +1,149 @@
+name: AI Issue Reply
+
+# イシューに help-AI ラベルが付いたら、AI が調査して返信する。
+#
+# ⚠ labeled のみ。イシュー作成時（テンプレートによるラベル自動付与を含む）に
+#    Gitea は opened と labeled の両方を発火するため、opened を足すと同じイシューに
+#    2 ジョブが起動して二重返信になる。
+on:
+  issues:
+    types: [labeled]
+
+# 同じイシューに対する二重起動を防ぐ。トリガー種別を絞るだけでは、
+# ラベルの同時付与・連続付与のときに再発しうるため、イシュー番号ごとに直列化する。
+concurrency:
+  group: ai-issue-reply-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+env:
+  TRIGGER_LABEL: help-AI          # このラベルで起動する
+  MODEL: claude-opus-5            # 一次モデル
+  FALLBACK_MODEL: claude-sonnet-5 # 過負荷時の代替
+  MAX_TURNS: "150"                # 無駄打ちが積み上がるのを機械的に止める
+  TIMEOUT_MINUTES: "60"           # 返信生成の上限
+  CLAUDE_CLI_VERSION: ""          # 例: 1.0.61。空なら latest
+
+jobs:
+  reply:
+    runs-on: ubuntu-latest
+    # 返信生成は TIMEOUT_MINUTES で止まる。それでも終わらない場合に
+    # ランナーを占有し続けないための保険（上限＋余裕）
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      # ① 自リポジトリ（ワークフロー・スキル・refs.json の置き場）
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # ② 起動条件の判定
+      #    ワークフローの if 式ではなくスクリプトでやる。ラベル付与時の payload の形
+      #    （.label / .changes.added_labels）が Gitea の実装により異なり、
+      #    式評価器の object filter 対応にも差があるため。手元でテストもできる。
+      - name: 起動条件の判定
+        id: gate
+        run: bash .gitea/scripts/gate.sh
+
+      # ③ 参照リポジトリの取得（refs.json に書かれたもの）
+      #    1 つ失敗しても止めない。資料が 1 つ欠けるより、返信が 1 件も出ないほうが痛い。
+      - name: 参照リポジトリを取得
+        if: steps.gate.outputs.run == 'true'
+        env:
+          GITEA_SERVER: ${{ github.server_url }}
+          REF_TOKEN: ${{ secrets.REF_TOKEN }}
+        run: bash .gitea/scripts/clone_refs.sh
+
+      # ④ 「作業中」のコメントを先に出す
+      #    返信生成は 10〜20 分かかる。何も出ないと、動いているのか分からない。
+      - name: 作業中コメントを投稿
+        if: steps.gate.outputs.run == 'true'
+        id: placeholder
+        env:
+          GITEA_API: ${{ github.server_url }}/api/v1/repos/${{ github.repository }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: |
+          set -eu
+          printf '調査中です。完了するとこのコメントが返信内容に書き換わります（目安 10〜20 分）。\n' > working.md
+          ID=$(bash .gitea/scripts/gitea_api.sh create-comment "${{ github.event.issue.number }}" working.md)
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
+
+      # ⑤ 既存コメントの取得（初回返信か、追加質問への再返信かの判定材料）
+      - name: 既存コメントを取得
+        if: steps.gate.outputs.run == 'true'
+        env:
+          GITEA_API: ${{ github.server_url }}/api/v1/repos/${{ github.repository }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: |
+          set -eu
+          bash .gitea/scripts/gitea_api.sh comments "${{ github.event.issue.number }}" \
+            | jq --arg id "${{ steps.placeholder.outputs.id }}" \
+                 '[.[] | select((.id|tostring) != $id)]' > comments.json
+          echo "既存コメント $(jq 'length' comments.json) 件"
+
+      # ⑥ プロンプトを組み立てる
+      #    イシュー本文・コメントはここで埋め込む。AI 自身に payload を読ませないことで、
+      #    AI 側の Bash を禁止できる（＝外部送信・書き換えの経路を塞げる）。
+      - name: プロンプトを組み立て
+        if: steps.gate.outputs.run == 'true'
+        env:
+          COMMENTS_FILE: comments.json
+          BOT_LOGIN: ${{ secrets.BOT_LOGIN }}
+          SKILL_PATH: .claude/skills/issue-ai-reply/SKILL.md
+        run: bash .gitea/scripts/build_prompt.sh > prompt.txt
+
+      - name: Claude Code CLI を用意
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          set -eu
+          if [ -n "${CLAUDE_CLI_VERSION}" ]; then
+            npm install -g "@anthropic-ai/claude-code@${CLAUDE_CLI_VERSION}"
+          else
+            npm install -g @anthropic-ai/claude-code
+          fi
+          claude --version
+
+      # ⑦ 返信を生成する
+      - name: 返信を生成
+        if: steps.gate.outputs.run == 'true'
+        id: generate
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PROMPT_FILE: prompt.txt
+          OUT_FILE: reply.md
+        run: bash .gitea/scripts/run_claude.sh
+
+      # ⑧ 作業中コメントを返信で書き換える
+      - name: 返信を投稿
+        if: steps.gate.outputs.run == 'true' && steps.generate.outcome == 'success'
+        env:
+          GITEA_API: ${{ github.server_url }}/api/v1/repos/${{ github.repository }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: bash .gitea/scripts/gitea_api.sh update-comment "${{ steps.placeholder.outputs.id }}" reply.md
+
+      # ⑨ 失敗したら、その旨をコメントに残す
+      #    黙って終わると「返信が来ない」だけが残り、原因を追う手がかりが無くなる。
+      - name: 失敗をコメントに残す
+        if: always() && steps.gate.outputs.run == 'true' && steps.generate.outcome != 'success'
+        env:
+          GITEA_API: ${{ github.server_url }}/api/v1/repos/${{ github.repository }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: |
+          set -eu
+          {
+            echo "返信の生成に失敗しました。"
+            echo
+            echo "- 実行: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_number }}"
+            echo "- 再実行: \`${TRIGGER_LABEL}\` ラベルを付け直してください"
+          } > failed.md
+          bash .gitea/scripts/gitea_api.sh update-comment "${{ steps.placeholder.outputs.id }}" failed.md
+
+      # ⑩ ラベルを外す
+      #    成否にかかわらず外す。失敗時に残ると同じラベルを付け直せず、再実行できない。
+      - name: ラベルを外す
+        if: always() && steps.gate.outputs.run == 'true'
+        env:
+          GITEA_API: ${{ github.server_url }}/api/v1/repos/${{ github.repository }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: bash .gitea/scripts/gitea_api.sh remove-label "${{ github.event.issue.number }}" "${TRIGGER_LABEL}"
