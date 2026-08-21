@@ -1,0 +1,21 @@
+{
+  "$comment": "wiki の決まりごとの検査設定。値はすべて省略でき、省略すると既定値になる。",
+  "readme": "README.md",
+  "image_dir": "_image",
+  "exclude": ["CLAUDE.md", "templates/**", "wikiの編集方法/テンプレート/**", ".github/**", ".gitea/**"],
+  "allow_orphan": [],
+  "checks": {
+    "links": true,
+    "wrapping": true,
+    "anchors": true,
+    "filenames": true,
+    "orphans": true,
+    "breadcrumbs": true,
+    "images": true,
+    "image_layout": true,
+    "details": true,
+    "anchor_placement": true,
+    "styling": true
+  },
+  "max_report": 10
+}
