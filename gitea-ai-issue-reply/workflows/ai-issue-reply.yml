@@ -105,11 +105,14 @@ jobs:
           claude --version
 
       # ⑦ 返信を生成する
+      #    ⚠ 契約プランの枠で動かすため、認証は OAuth トークンを使う。
+      #       ANTHROPIC_API_KEY（従量課金）は**置かない**。両方あると課金される側で
+      #       動く可能性があるため、run_claude.sh 側でも両立していたら止める。
       - name: 返信を生成
         if: steps.gate.outputs.run == 'true'
         id: generate
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           PROMPT_FILE: prompt.txt
           OUT_FILE: reply.md
         run: bash .gitea/scripts/run_claude.sh
@@ -124,6 +127,7 @@ jobs:
 
       # ⑨ 失敗したら、その旨をコメントに残す
       #    黙って終わると「返信が来ない」だけが残り、原因を追う手がかりが無くなる。
+      #    利用上限に達した場合は、いつ再実行できるかまで書く（ジョブログを開かずに済むように）。
       - name: 失敗をコメントに残す
         if: always() && steps.gate.outputs.run == 'true' && steps.generate.outcome != 'success'
         env:
@@ -131,12 +135,16 @@ jobs:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         run: |
           set -eu
-          {
-            echo "返信の生成に失敗しました。"
-            echo
-            echo "- 実行: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_number }}"
-            echo "- 再実行: \`${TRIGGER_LABEL}\` ラベルを付け直してください"
-          } > failed.md
+          if [ -f usage-limit.txt ]; then
+            bash .gitea/scripts/usage_limit_message.sh > failed.md
+          else
+            {
+              echo "返信の生成に失敗しました。"
+              echo
+              echo "- 実行: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_number }}"
+              echo "- 再実行: \`${TRIGGER_LABEL}\` ラベルを付け直してください"
+            } > failed.md
+          fi
           bash .gitea/scripts/gitea_api.sh update-comment "${{ steps.placeholder.outputs.id }}" failed.md
 
       # ⑩ ラベルを外す

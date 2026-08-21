@@ -69,6 +69,37 @@ chmod +x "$TMP/claude_ng"
 ERR=$(CLAUDE_BIN="$TMP/claude_ng" PROMPT_FILE="$TMP/prompt.txt" OUT_FILE="$TMP/ng.md" bash "$S" 2>&1); RC=$?
 check "CLI の異常終了を伝える" "$([ "$RC" = "7" ] && [ "$(has "$ERR" '異常終了')" = true ] && echo true || echo false)"
 
+# --- 契約プランの利用上限 ---
+cat > "$TMP/claude_limit" <<'FAKE'
+#!/usr/bin/env bash
+[ "${1:-}" = "--help" ] && { echo "  --print --model --max-turns --disallowed-tools"; exit 0; }
+cat > /dev/null
+echo "Claude AI usage limit reached|1787000000" >&2
+exit 1
+FAKE
+chmod +x "$TMP/claude_limit"
+rm -f "$TMP/usage-limit.txt"
+ERR=$(CLAUDE_BIN="$TMP/claude_limit" PROMPT_FILE="$TMP/prompt.txt" OUT_FILE="$TMP/l.md" \
+      ERR_FILE="$TMP/err.log" USAGE_LIMIT_FILE="$TMP/usage-limit.txt" bash "$S" 2>&1); RC=$?
+check "利用上限は専用の終了コードで区別する" "$([ "$RC" = "9" ] && echo true || echo false)"
+check "リセット時刻を記録する" "$([ "$(cat "$TMP/usage-limit.txt" 2>/dev/null)" = "1787000000" ] && echo true || echo false)"
+
+MSG=$(TRIGGER_LABEL=help-AI bash "$HERE/../scripts/usage_limit_message.sh" 1787000000)
+check "文面に上限到達と書く" "$(has "$MSG" '利用上限に達した')"
+check "文面にリセット時刻を JST で書く" "$(has "$MSG" 'JST')"
+check "追加請求が無い旨を書く" "$(has "$MSG" '追加の請求は発生していません')"
+check "再実行の方法を書く" "$(has "$MSG" 'help-AI')"
+
+MSG=$(bash "$HERE/../scripts/usage_limit_message.sh" "こわれた値")
+check "時刻が読めないときは推測で書かない" "$([ "$(has "$MSG" 'JST')" = false ] && echo true || echo false)"
+check "時刻が読めなくても再実行の方法は書く" "$(has "$MSG" '付け直して')"
+
+# --- 従量課金の API キーが混ざっていたら止める ---
+ERR=$(ANTHROPIC_API_KEY=sk-xxx CLAUDE_CODE_OAUTH_TOKEN=oauth-xxx \
+      CLAUDE_BIN="$TMP/claude_ok" PROMPT_FILE="$TMP/prompt.txt" OUT_FILE="$TMP/z.md" bash "$S" 2>&1); RC=$?
+check "API キーと OAuth が両立していたら起動しない" "$([ "$RC" = "4" ] && echo true || echo false)"
+check "課金される可能性を理由として出す" "$(has "$ERR" '従量課金')"
+
 echo
 if [ "$FAIL" -gt 0 ]; then echo "$FAIL 件失敗しました。"; exit 1; fi
 echo "すべて通りました。"

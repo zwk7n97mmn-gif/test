@@ -19,6 +19,17 @@ TIMEOUT_MINUTES="${TIMEOUT_MINUTES:-60}"
 DISALLOWED_TOOLS="${DISALLOWED_TOOLS:-Edit,MultiEdit,Write,NotebookEdit,Bash,WebFetch,WebSearch}"
 DRY_RUN="${DRY_RUN:-0}"
 SKIP_FLAG_CHECK="${SKIP_FLAG_CHECK:-0}"
+ERR_FILE="${ERR_FILE:-claude-stderr.log}"
+# 契約プランの枠を使い切ったときに、リセット時刻を残す先
+USAGE_LIMIT_FILE="${USAGE_LIMIT_FILE:-usage-limit.txt}"
+
+# 契約プランの枠で動かす前提のため、従量課金の API キーが紛れていたら止める。
+# 両方あると、意図せず課金される側で動く可能性がある。
+if [ -n "${ANTHROPIC_API_KEY:-}" ] && [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+  echo "ANTHROPIC_API_KEY と CLAUDE_CODE_OAUTH_TOKEN の両方が設定されています。" >&2
+  echo "契約プランの枠で動かすなら ANTHROPIC_API_KEY を外してください（従量課金になる可能性があります）。" >&2
+  exit 4
+fi
 
 [ -f "$PROMPT_FILE" ] || { echo "プロンプトがありません: $PROMPT_FILE" >&2; exit 1; }
 
@@ -60,8 +71,20 @@ if [ "$DRY_RUN" = "1" ]; then
   exit 0
 fi
 
-timeout "${TIMEOUT_MINUTES}m" "$CLAUDE_BIN" "${ARGS[@]}" < "$PROMPT_FILE" > "$OUT_FILE"
+rm -f "$USAGE_LIMIT_FILE"
+timeout "${TIMEOUT_MINUTES}m" "$CLAUDE_BIN" "${ARGS[@]}" < "$PROMPT_FILE" > "$OUT_FILE" 2> "$ERR_FILE"
 RC=$?
+[ -s "$ERR_FILE" ] && cat "$ERR_FILE" >&2
+
+# 契約プランの利用上限に達した場合。課金には変わらないが、そのままでは
+# 「いつ再実行すればよいか」が分からないため、リセット時刻を拾って残す。
+if grep -qi "usage limit reached" "$ERR_FILE" "$OUT_FILE" 2>/dev/null; then
+  EPOCH=$(cat "$ERR_FILE" "$OUT_FILE" 2>/dev/null \
+          | sed -n 's/.*usage limit reached|\([0-9][0-9]*\).*/\1/p' | head -1)
+  printf '%s' "$EPOCH" > "$USAGE_LIMIT_FILE"
+  echo "契約プランの利用上限に達しました（リセット時刻: ${EPOCH:-不明}）" >&2
+  exit 9
+fi
 
 if [ "$RC" -eq 124 ]; then
   echo "${TIMEOUT_MINUTES} 分で打ち切りました" >&2
