@@ -24,7 +24,7 @@ echo "## ご質問ありがとうございます"
 FAKE
 chmod +x "$TMP/claude_ok"
 
-OUT=$(CLAUDE_BIN="$TMP/claude_ok" PROMPT_FILE="$TMP/prompt.txt" OUT_FILE="$TMP/reply.md" \
+OUT=$(CLAUDE_BIN="$TMP/claude_ok" PROMPT_FILE="$TMP/prompt.txt" OUT_FILE="$TMP/reply.md" ERR_FILE="$TMP/e.log" USAGE_LIMIT_FILE="$TMP/u.txt" \
       DRY_RUN=1 bash "$S")
 check "モデルを渡す" "$(has "$OUT" -- '--model claude-opus-5')"
 check "非対話（--print）で動かす" "$(has "$OUT" -- '--print')"
@@ -33,7 +33,7 @@ check "書き込み系ツールを禁止する" "$(has "$OUT" 'Edit,MultiEdit,Wr
 check "Bash を禁止する" "$(has "$OUT" 'Bash')"
 check "代替モデルを渡す" "$(has "$OUT" -- '--fallback-model claude-sonnet-5')"
 
-ERR=$(CLAUDE_BIN="$TMP/claude_ok" PROMPT_FILE="$TMP/prompt.txt" OUT_FILE="$TMP/reply.md" \
+ERR=$(CLAUDE_BIN="$TMP/claude_ok" PROMPT_FILE="$TMP/prompt.txt" OUT_FILE="$TMP/reply.md" ERR_FILE="$TMP/e.log" USAGE_LIMIT_FILE="$TMP/u.txt" \
       bash "$S" 2>&1)
 check "実行すると返信ファイルができる" "$([ -s "$TMP/reply.md" ] && echo true || echo false)"
 check "生成した旨を表示する" "$(has "$ERR" '返信を生成しました')"
@@ -45,7 +45,7 @@ cat > "$TMP/claude_old" <<'FAKE'
 echo "本文"
 FAKE
 chmod +x "$TMP/claude_old"
-ERR=$(CLAUDE_BIN="$TMP/claude_old" PROMPT_FILE="$TMP/prompt.txt" OUT_FILE="$TMP/x.md" bash "$S" 2>&1); RC=$?
+ERR=$(CLAUDE_BIN="$TMP/claude_old" PROMPT_FILE="$TMP/prompt.txt" OUT_FILE="$TMP/x.md" ERR_FILE="$TMP/e.log" USAGE_LIMIT_FILE="$TMP/u.txt" bash "$S" 2>&1); RC=$?
 check "想定と違うフラグ名なら起動せずに落ちる" "$([ "$RC" = "2" ] && echo true || echo false)"
 check "どのフラグが無いかを出す" "$(has "$ERR" -- '--max-turns')"
 
@@ -56,7 +56,7 @@ cat > "$TMP/claude_empty" <<'FAKE'
 cat > /dev/null
 FAKE
 chmod +x "$TMP/claude_empty"
-ERR=$(CLAUDE_BIN="$TMP/claude_empty" PROMPT_FILE="$TMP/prompt.txt" OUT_FILE="$TMP/empty.md" bash "$S" 2>&1); RC=$?
+ERR=$(CLAUDE_BIN="$TMP/claude_empty" PROMPT_FILE="$TMP/prompt.txt" OUT_FILE="$TMP/empty.md" ERR_FILE="$TMP/e.log" USAGE_LIMIT_FILE="$TMP/u.txt" bash "$S" 2>&1); RC=$?
 check "返信が空なら失敗にする" "$([ "$RC" = "3" ] && echo true || echo false)"
 
 # --- 異常終了をそのまま伝える ---
@@ -66,7 +66,7 @@ cat > "$TMP/claude_ng" <<'FAKE'
 cat > /dev/null; echo "boom" >&2; exit 7
 FAKE
 chmod +x "$TMP/claude_ng"
-ERR=$(CLAUDE_BIN="$TMP/claude_ng" PROMPT_FILE="$TMP/prompt.txt" OUT_FILE="$TMP/ng.md" bash "$S" 2>&1); RC=$?
+ERR=$(CLAUDE_BIN="$TMP/claude_ng" PROMPT_FILE="$TMP/prompt.txt" OUT_FILE="$TMP/ng.md" ERR_FILE="$TMP/e.log" USAGE_LIMIT_FILE="$TMP/u.txt" bash "$S" 2>&1); RC=$?
 check "CLI の異常終了を伝える" "$([ "$RC" = "7" ] && [ "$(has "$ERR" '異常終了')" = true ] && echo true || echo false)"
 
 # --- 契約プランの利用上限 ---
@@ -96,7 +96,7 @@ check "時刻が読めなくても再実行の方法は書く" "$(has "$MSG" '�
 
 # --- 従量課金の API キーが混ざっていたら止める ---
 ERR=$(ANTHROPIC_API_KEY=sk-xxx CLAUDE_CODE_OAUTH_TOKEN=oauth-xxx \
-      CLAUDE_BIN="$TMP/claude_ok" PROMPT_FILE="$TMP/prompt.txt" OUT_FILE="$TMP/z.md" bash "$S" 2>&1); RC=$?
+      CLAUDE_BIN="$TMP/claude_ok" PROMPT_FILE="$TMP/prompt.txt" OUT_FILE="$TMP/z.md" ERR_FILE="$TMP/e.log" USAGE_LIMIT_FILE="$TMP/u.txt" bash "$S" 2>&1); RC=$?
 check "API キーと OAuth が両立していたら起動しない" "$([ "$RC" = "4" ] && echo true || echo false)"
 check "課金される可能性を理由として出す" "$(has "$ERR" '従量課金')"
 
