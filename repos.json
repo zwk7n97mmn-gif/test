@@ -1,0 +1,177 @@
+{
+  "$comment": "リポジトリ一覧の唯一の正。入口ページの表はこれと照合される（scripts/check_repos.py）。 id は文中の参照名、path は Gitea 上の実リポジトリ名（省略時は id と同じ）。",
+  "gitea_base": "〔GiteaのURL〕/jinkyu",
+  "groups": [
+    {
+      "id": "product",
+      "label": "製品そのもの",
+      "repos": [
+        {
+          "id": "jinkyu_src",
+          "name": "jinkyu_src",
+          "summary": "人給システムのソース本体（Java / Spring Boot）。SQL・帳票レイアウト・各種 bat も同梱",
+          "users": "開発者",
+          "path": "jinkyu"
+        },
+        {
+          "id": "jinkyu_src_merged_json",
+          "name": "jinkyu_src_merged_json",
+          "summary": "画面定義 JSON のマージ後の実効値（screen / error_check / code_assistant）",
+          "users": "開発者・AI",
+          "note": "自動更新。button と config は入らない"
+        }
+      ]
+    },
+    {
+      "id": "design",
+      "label": "設計資料と、そこからデータを作る道具",
+      "repos": [
+        {
+          "id": "jinkyu_doc",
+          "name": "jinkyu_doc",
+          "summary": "設計資料（Excel 等）。画面設計・テーブル設計・コード設計・帳票設計",
+          "users": "設計者"
+        },
+        {
+          "id": "jinkyu_tools",
+          "name": "jinkyu_tools",
+          "summary": "設計資料から DDL / DML / 画面定義 JSON を生成する bat 群",
+          "users": "設計者・開発者",
+          "note": "要 uv sync"
+        },
+        {
+          "id": "jinkyu_manager_menu",
+          "name": "jinkyu_manager_menu",
+          "summary": "メニュー構成とロール別表示を JSON で一元管理し、SQL を生成する Web アプリ",
+          "users": "設計者",
+          "note": "10.bat から移行"
+        },
+        {
+          "id": "jinkyu_manager_code",
+          "name": "jinkyu_manager_code",
+          "summary": "汎用コードマスタと版管理マスタを JSON で一元管理し、SQL と設計書 md を生成する Web アプリ",
+          "users": "設計者",
+          "note": "40.bat から移行"
+        },
+        {
+          "id": "jinkyu_bat_definition_generator",
+          "name": "jinkyu_bat_definition_generator",
+          "summary": "V2 バッチ定義（ジョブ定義・ジョブバッチ定義・データレイアウト定義）の様式の正本と、SQL 生成ツール",
+          "users": "設計者"
+        },
+        {
+          "id": "jinkyu_json_schema",
+          "name": "jinkyu_json_schema",
+          "summary": "画面定義 JSON のスキーマ定義。各キーの意味・必須／任意はここが正",
+          "users": "開発者・AI"
+        }
+      ]
+    },
+    {
+      "id": "test",
+      "label": "テスト",
+      "repos": [
+        {
+          "id": "jinkyu_e2e_test",
+          "name": "jinkyu_e2e_test",
+          "summary": "E2E テストを動かすための bat 置き場（テスト用 DB コンテナ操作・実行と結果格納）",
+          "users": "テスト担当"
+        },
+        {
+          "id": "jinkyu_playwright",
+          "name": "jinkyu_playwright",
+          "summary": "E2E テストフレームワーク本体。ブラウザ自動操作と DB 検証を組み合わせる",
+          "users": "テスト担当",
+          "note": "要 uv sync"
+        },
+        {
+          "id": "jinkyu_playwright_generator",
+          "name": "jinkyu_playwright_generator",
+          "summary": "テストコードの自動生成。生成された枠を元に画面固有処理を書く",
+          "users": "テスト担当"
+        },
+        {
+          "id": "jinkyu_test_result",
+          "name": "jinkyu_test_result",
+          "summary": "テスト結果（エビデンス）の格納先",
+          "users": "テスト担当"
+        },
+        {
+          "id": "screenshot_comparator",
+          "name": "screenshot_comparator",
+          "summary": "スクリーンショット比較ツール。SSIM で比較し差分を赤くハイライトする",
+          "users": "テスト担当",
+          "note": "要 uv sync"
+        }
+      ]
+    },
+    {
+      "id": "knowledge",
+      "label": "知識",
+      "repos": [
+        {
+          "id": "jinkyu_develop_wiki",
+          "name": "jinkyu_develop_wiki",
+          "summary": "開発者向け wiki。環境構築・作業フロー・開発ルール・V2 機能説明・権限管理・バッチ・自動テスト",
+          "users": "開発者"
+        },
+        {
+          "id": "jinkyu_knowledge_doc",
+          "name": "jinkyu_knowledge_doc",
+          "summary": "業務知見の正典。業務知識・運用実態・専門用語",
+          "users": "全員",
+          "note": "社外公開。運用実態は他県のものを含むため断定しない"
+        },
+        {
+          "id": "jinkyu_v1_migration_skills",
+          "name": "jinkyu_v1_migration_skills",
+          "summary": "v1 と v2 のテーブル・カラム・ソースの対応関係",
+          "users": "開発者"
+        },
+        {
+          "id": "syomuzimu",
+          "name": "syomuzimu",
+          "summary": "庶務事務領域のイシュー管理リポジトリ。実装コードは持たない。AI 返信の仕組みもここ",
+          "users": "全員"
+        },
+        {
+          "id": "syomuzimu.wiki",
+          "name": "syomuzimu.wiki",
+          "summary": "庶務事務領域の開発方針・共通仕様・運用ルール",
+          "users": "設計者・開発者"
+        }
+      ]
+    },
+    {
+      "id": "utility",
+      "label": "補助ツール",
+      "repos": [
+        {
+          "id": "sql_executor",
+          "name": "sql_executor",
+          "summary": "SQL ファイル実行ツール。単一・複数・ディレクトリ一括で実行する",
+          "users": "開発者",
+          "note": "要 uv sync／接続先に注意"
+        },
+        {
+          "id": "copy_by_line_diff",
+          "name": "copy_by_line_diff",
+          "summary": "行単位の差分でファイルを選択コピーする。指定行を除外して比較できる",
+          "users": "開発者",
+          "note": "要 uv sync"
+        },
+        {
+          "id": "git_diff_file_extractor",
+          "name": "git_diff_file_extractor",
+          "summary": "選択したコミットから HEAD までの差分ファイルを抽出し、絶対パス一覧を出す",
+          "users": "開発者",
+          "note": "要 uv sync"
+        }
+      ]
+    }
+  ],
+  "expected_sibling_pages": [
+    "フォルダ構成.md",
+    "jinkyu_tools.md"
+  ]
+}
