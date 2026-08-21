@@ -52,7 +52,7 @@ gitea-ai-issue-reply/
 │   ├── usage_limit_message.sh  利用上限に達したときの文面（リセット時刻を JST で）
 │   ├── gitea_api.sh     コメントの作成・書き換え、ラベル操作（DRY_RUN 対応）
 │   ├── check_sync.py    参照一覧の食い違い検査（refs.json / SKILL.md / 運用仕様.md）
-│   ├── check_tree.py    ドキュメントのツリーと実体の照合
+│   ├── check_tree.py    ドキュメントのツリーと実体の照合（check-tree から配布）
 │   └── install.sh       配置
 ├── docs/
 │   ├── フォルダ構成.md        どこに何があるか（入口）

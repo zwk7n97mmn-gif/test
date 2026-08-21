@@ -95,5 +95,6 @@ python tests/test_logic.py         # ロジックのテスト
 `repo-hub/` は、リポジトリが増えたときの入口ページと、その内容が実態から離れないようにする検査です。
 どちらも独立して動きます。
 
-- [gitea-ai-issue-reply/README.md](gitea-ai-issue-reply/README.md)
-- [repo-hub/README.md](repo-hub/README.md)
+- [gitea-ai-issue-reply/README.md](gitea-ai-issue-reply/README.md) … イシューに AI が返信する仕組み
+- [repo-hub/README.md](repo-hub/README.md) … リポジトリ横断の入口ページ
+- [check-tree/README.md](check-tree/README.md) … ドキュメントのツリーと実体を照合するツール（各リポジトリへ配る）
