@@ -1,0 +1,8 @@
+{
+  "$comment": "ツリー照合の設定。値はすべて省略でき、省略すると下のコメントの既定値になる。",
+  "docs": ["*.md", "docs/**/*.md"],
+  "ignore": ["**/__pycache__/**", "**/node_modules/**", "**/.venv/**", "*.pyc", "*.log"],
+  "source": "auto",
+  "require_listed": true,
+  "require_tree": true
+}

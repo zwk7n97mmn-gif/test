@@ -1,0 +1,25 @@
+name: ツリー照合
+
+# ドキュメントのフォルダツリーが実体と合っているかを、push と PR で確かめる。
+# 直し忘れたままマージされるのを防ぐ。
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  check-tree:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # ⚠ git の管理対象を実体とみなすため、浅い取得で構わないが
+          #    ファイル一覧は完全である必要がある（--depth 1 でも一覧は揃う）
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: ツリーと実体を照合する
+        run: python tools/check_tree.py
