@@ -1,0 +1,122 @@
+# wiki-kit — wiki リポジトリの雛形と、決まりごとの検査
+
+📍`🏠ホーム > 📁wiki-kit`
+
+---
+
+## 📖 これは何か
+
+Gitea 上に**目次つきの wiki リポジトリ**を作るための雛形と、
+その決まりごとが守られているかを確かめる検査です。
+
+目次が数百行、ページが数百件に育つと、次が必ず起きます。
+
+- ページを消したのに目次のリンクが残る
+- 目次に書いたのにページを作っていない
+- ファイル名と目次の表記がずれて、探せなくなる
+- パンくずが無く、深いページに直接飛んできた人が迷子になる
+- 画像のパスがルート起点になっていて、Gitea で表示されない
+
+**規約を書くだけでは守られません。** 検査にしてあります。
+
+<br>
+
+---
+
+## 🌲 フォルダ構成
+
+```
+📦wiki-kit
+ ┣ 📂scripts
+ ┃ ┣ 📜wiki_lint.py           … 決まりごとの検査（配布物）
+ ┃ ┗ 📜install.sh             … 配置
+ ┣ 📂templates
+ ┃ ┣ 📜CLAUDE.md              … 決まりごと（配置先に置く）
+ ┃ ┣ 📜README.md              … 目次兼トップページの雛形
+ ┃ ┣ 📜汎用ページ.md
+ ┃ ┣ 📜手順ページ.md
+ ┃ ┣ 📜機能説明ページ.md
+ ┃ ┗ 📜コンポーネント説明ページ.md
+ ┣ 📂workflows
+ ┃ ┗ 📜wiki-lint.yml          … Gitea Actions の雛形
+ ┣ 📂tests
+ ┃ ┣ 📜run_all.sh
+ ┃ ┣ 📜test_wiki_lint.py
+ ┃ ┗ 📜test_install.sh
+ ┣ 📜wiki-lint.json           … 検査の設定
+ ┗ 📜README.md
+```
+
+<br>
+
+---
+
+## 🚀 使いかた
+
+```bash
+bash scripts/install.sh /path/to/your-wiki
+```
+
+置かれるもの:
+
+| ファイル | 扱い |
+| --- | --- |
+| `scripts/wiki_lint.py` | 配布物。**常に上書き**（直すのは配布元） |
+| `.gitea/workflows/wiki-lint.yml` | 同上 |
+| `CLAUDE.md` `README.md` `wiki-lint.json` `templates/` | 各wikiで育てるもの。**すでにあれば触らない** |
+
+配置したら `CLAUDE.md` と `README.md` の〔　〕を埋め、検査を走らせます。
+
+```bash
+python3 scripts/wiki_lint.py
+python3 scripts/wiki_lint.py --only links,images   # 一部だけ
+python3 scripts/wiki_lint.py --root ../other-wiki  # 別のwikiを見る
+```
+
+<br>
+
+---
+
+## ✅ 検査するもの
+
+| 検査 | 見つかるもの |
+| --- | --- |
+| `links` | リンク先のページが無い（消した・改名した） |
+| `wrapping` | 括弧や空白を含むリンクを `<>` で囲んでいない（表示が壊れる） |
+| `anchors` | 目次のジャンプ先 `<a id="...">` が無い／使われていない |
+| `filenames` | 目次の表記とファイル名が食い違う |
+| `orphans` | どこからも辿れないページ |
+| `breadcrumbs` | ページ先頭の見出し・パンくずが無い |
+| `images` | 画像・動画の参照先が無い／ルート起点の絶対パスになっている |
+
+`wiki-lint.json` の `checks` で、個別に切れます。段階的に入れるときは、
+守れている検査だけ `true` にして、残りは後から上げてください。
+
+### 判定の細かいところ
+
+- **同じページを別の表記で参照してよい。** 少なくとも 1 か所、ファイル名と揃った表記で
+  登録されていれば `filenames` は通ります（本文中からの言及で落ちないため）
+- **装飾は名前に含めない。** `` `コード` `` や `**太字**` はファイル名に入らないので、
+  比較の前に外します。ただし**アンダースコアは残します**（`jinkyu_tools` のように名前の一部のため）
+- **コードブロックの中は見ません。** 書き方の例として貼ったリンクで落ちないようにするためです
+
+<br>
+
+---
+
+## 🧪 テスト
+
+```bash
+bash tests/run_all.sh
+```
+
+一時ディレクトリに、わざと規約を破った wiki を作って確かめます。外部への通信はしません。
+
+<br>
+
+---
+
+## 👀 関連ページ
+
+- [check-tree](../check-tree/README.md) … ドキュメントのツリーと実体を照合する
+- [repo-hub](../repo-hub/README.md) … リポジトリ横断の入口ページ

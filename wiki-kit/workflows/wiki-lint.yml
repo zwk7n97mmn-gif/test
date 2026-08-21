@@ -1,0 +1,23 @@
+name: wiki の決まりごと検査
+
+# ページを足したとき、リンク切れや命名のズレをその場で見つける。
+# 目次が数百行に育つと、人手では守り切れない。
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  wiki-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 決まりごとを検査する
+        run: python scripts/wiki_lint.py

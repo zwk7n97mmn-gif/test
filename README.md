@@ -98,3 +98,4 @@ python tests/test_logic.py         # ロジックのテスト
 - [gitea-ai-issue-reply/README.md](gitea-ai-issue-reply/README.md) … イシューに AI が返信する仕組み
 - [repo-hub/README.md](repo-hub/README.md) … リポジトリ横断の入口ページ
 - [check-tree/README.md](check-tree/README.md) … ドキュメントのツリーと実体を照合するツール（各リポジトリへ配る）
+- [wiki-kit/README.md](wiki-kit/README.md) … 目次つき wiki の雛形と、決まりごとの検査
