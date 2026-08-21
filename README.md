@@ -21,6 +21,30 @@
 
 ---
 
+## 🌲 フォルダ構成
+
+```
+📦repo-hub
+ ┣ 📂scripts
+ ┃ ┣ 📜check_repos.py     … 一覧とページの照合
+ ┃ ┗ 📜check_links.py     … リンク切れ検査
+ ┣ 📂tools
+ ┃ ┣ 📜check_tree.py      … ツリーと実体の照合（check-tree から配布）
+ ┃ ┗ 📜ツリー照合.bat
+ ┣ 📂tests
+ ┃ ┣ 📜run_all.sh
+ ┃ ┣ 📜test_check_repos.py
+ ┃ ┗ 📜test_check_links.py
+ ┣ 📜リポジトリ全体像.md
+ ┣ 📜repos.json
+ ┣ 📜check-tree.json
+ ┗ 📜README.md
+```
+
+<br>
+
+---
+
 ## 🚀 使いかた
 
 ### 1. Gitea の URL を入れる

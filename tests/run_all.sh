@@ -7,13 +7,14 @@ ROOT="$HERE/.."
 FAILED=""
 
 run() {
+  local label="$1"; shift
   echo
   echo "=============================================================="
-  echo " $1"
+  echo " $label"
   echo "=============================================================="
-  shift
+  # ⚠ shift のあとに $1 を使うと、失敗一覧に "bash" と出てしまう
   if ! "$@"; then FAILED="$FAILED
-  - $1"; fi
+  - $label"; fi
 }
 
 run "一覧とページの照合"    python3 "$HERE/test_check_repos.py"
