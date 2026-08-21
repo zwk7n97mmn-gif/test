@@ -23,7 +23,7 @@ FILES=(
   "refs.json|refs.json"
   ".gitattributes|.gitattributes"
 )
-SCRIPTS=(gate.sh clone_refs.sh build_prompt.sh run_claude.sh gitea_api.sh check_sync.py)
+SCRIPTS=(gate.sh clone_refs.sh build_prompt.sh run_claude.sh usage_limit_message.sh gitea_api.sh check_sync.py)
 
 # 既存ファイルの確認
 EXISTING=""

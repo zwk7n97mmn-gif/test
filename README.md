@@ -18,7 +18,8 @@ help-AI ラベルを外す（追加質問は コメント → ラベル再付与
 ```
 
 - **調査して答えるだけ。** コードの修正・コミット・PR 作成はしません（ツール権限でも禁止）
-- **外部サービスに依存しません。** 必要なのは Gitea・ランナー・Anthropic API キーだけ
+- **契約プランの枠内で動きます。** 認証は OAuth トークン。従量課金の API キーは使いません
+  （枠を超えたときは課金ではなく、リセット時刻を添えて失敗します）
 - **手元でテストできます。** 通信せずに、判定・取得・プロンプト・API 呼び出しを確かめられます
 
 ## 使いはじめる
@@ -30,7 +31,7 @@ bash scripts/install.sh /path/to/your-repo   # 配置
 python3 scripts/check_sync.py                # 一覧の食い違いを検査
 ```
 
-あとは Secrets（`ANTHROPIC_API_KEY` / `BOT_TOKEN` / `BOT_LOGIN` / `REF_TOKEN`）を登録し、
+あとは Secrets（`CLAUDE_CODE_OAUTH_TOKEN` / `BOT_TOKEN` / `BOT_LOGIN` / `REF_TOKEN`）を登録し、
 `help-AI` ラベルを作れば動きます。手順は **[docs/セットアップ.md](docs/セットアップ.md)** に。
 
 ## 中身
@@ -45,7 +46,8 @@ gitea-ai-issue-reply/
 │   ├── gate.sh          起動条件の判定（PR 除外・ラベル判定・二重起動の抑止）
 │   ├── clone_refs.sh    参照リポジトリの取得（1 つ失敗しても続行、.git は捨てる）
 │   ├── build_prompt.sh  イシュー本文・コメント・取得結果からプロンプトを作る
-│   ├── run_claude.sh    Claude Code CLI の実行（フラグを事前検証）
+│   ├── run_claude.sh    Claude Code CLI の実行（フラグを事前検証・利用上限を検出）
+│   ├── usage_limit_message.sh  利用上限に達したときの文面（リセット時刻を JST で）
 │   ├── gitea_api.sh     コメントの作成・書き換え、ラベル操作（DRY_RUN 対応）
 │   ├── check_sync.py    参照一覧の食い違い検査（refs.json / SKILL.md / 運用仕様.md）
 │   └── install.sh       配置
@@ -89,6 +91,8 @@ Gitea API は `DRY_RUN` で要求内容だけを確認します。
 | 本文はワークフロー側で埋め込む | AI にイベントファイルを読ませないことで `Bash` を禁止できる |
 | `Bash` / 書き込み系 / Web 系を禁止 | 本文は外部入力。指示だけでは強制にならない |
 | CLI フラグを起動前に検証 | 版でフラグ名が変わる。走ってから落ちると切り分けに時間がかかる |
+| 認証は契約プランの OAuth トークン | API キーは従量課金。枠超過が「課金」ではなく「失敗」になる方を選ぶ |
+| API キーと OAuth の両立を検出したら止める | どちらが優先されるかは環境依存で、意図せず課金される側で動きうる |
 | ラベルは成否にかかわらず外す | 残ると同じラベルを付け直せず、再実行できない |
 
 ## 既製のアクションを使う構成にする場合
