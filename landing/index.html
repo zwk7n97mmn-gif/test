@@ -18,7 +18,7 @@
 body{margin:0;background:var(--bg);color:var(--ink);
   font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Yu Gothic UI",Meiryo,sans-serif;
   font-size:16px;line-height:1.85;-webkit-font-smoothing:antialiased}
-img{max-width:100%;display:block}
+img{max-width:100%;height:auto;display:block}
 a{color:var(--accent)}
 h1,h2,h3{line-height:1.4;letter-spacing:.01em;margin:0}
 .wrap{max-width:1060px;margin:0 auto;padding:0 20px}
@@ -65,6 +65,7 @@ header nav a:hover{color:var(--ink)}
 
 /* 機能 */
 .feature{display:grid;grid-template-columns:1fr 1.25fr;gap:44px;align-items:center;margin-top:52px}
+.feature .pic{align-self:center}
 .feature:first-of-type{margin-top:34px}
 .feature.rev{grid-template-columns:1.25fr 1fr}
 .feature.rev .text{order:2}
@@ -138,6 +139,7 @@ footer .spacer{flex:1}
     <div class="brand"><span class="mark">T</span>TaskDeck</div>
     <nav>
       <a href="#features">できること</a>
+      <a href="#options">オプション</a>
       <a href="#compare">比較</a>
       <a href="#price">価格</a>
       <a href="#faq">よくある質問</a>
@@ -244,6 +246,50 @@ footer .spacer{flex:1}
   </div>
 </section>
 
+<section id="options">
+  <div class="wrap">
+    <div class="eyebrow">オプション</div>
+    <h2>必要になったときだけ、機能を足す。</h2>
+    <p class="lead">本体はタスク管理だけに絞ってあります。使わない機能で画面が重くなることはありません。
+      必要な仕事が出てきたら、拡張パッケージを 1 つ買って読み込むだけで足せます。</p>
+
+    <div class="feature">
+      <div class="text">
+        <h3>確定申告データ管理</h3>
+        <p>複式簿記で仕訳を記録すると、総勘定元帳・試算表・損益計算書・貸借対照表まで自動で集計します。
+          青色申告の決算書に転記できる形でまとまります。</p>
+        <ul>
+          <li>借方と貸方が合わない仕訳は登録できないので、記帳のミスがその場で分かる</li>
+          <li>個人事業主向けの勘定科目をあらかじめ用意（追加・削除も可能）</li>
+          <li>タスクから「この仕事の売上を記帳」──請求もれを、いつもの画面から確認できる</li>
+          <li>仕訳帳CSV・試算表CSV で、会計ソフトや税理士へそのまま渡せる</li>
+        </ul>
+        <p class="pricenote" style="margin-top:14px"><b>¥6,800（税込・買い切り）</b>　本体をお持ちの方向けのオプションです。</p>
+        <a class="btn sub" href="〔決済リンク: 確定申告オプション〕">このオプションを購入する</a>
+      </div>
+      <div class="pic"><img src="assets/screen-tax-journal.png" alt="確定申告オプションの仕訳帳画面" width="2010" height="1080"></div>
+    </div>
+
+    <div class="grid3" style="margin-top:46px">
+      <div class="card">
+        <span class="ico">🔐</span>
+        <h3>署名されたものだけが動く</h3>
+        <p>拡張パッケージには販売元の電子署名が入っています。署名のないものや、途中で書き換えられたものは読み込まれません。</p>
+      </div>
+      <div class="card">
+        <span class="ico">🧩</span>
+        <h3>いつでも外せる</h3>
+        <p>拡張は一覧から停止・取り外しができます。外したあとの本体は、拡張を入れる前とまったく同じ動きに戻ります。</p>
+      </div>
+      <div class="card">
+        <span class="ico">🚀</span>
+        <h3>これから増えます</h3>
+        <p>請求書作成、経費の写真メモ、勤怠記録など、同じ仕組みの上に順次追加していく予定です。本体を買い直す必要はありません。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section id="compare" class="alt">
   <div class="wrap">
     <div class="eyebrow">比較</div>
@@ -310,6 +356,18 @@ footer .spacer{flex:1}
         <a class="btn sub" href="〔決済リンク: サイトライセンス〕">購入・お問い合わせ</a>
       </div>
     </div>
+    <table class="cmp" style="margin-top:30px">
+      <thead><tr><th style="width:46%">オプション（拡張パッケージ）</th><th>価格</th><th>内容</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>確定申告データ管理</b></td>
+          <td>¥6,800</td>
+          <td>複式簿記の記帳、総勘定元帳・試算表・決算のまとめ、CSV書き出し</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="pricenote">オプションは本体とは別売りです。本体をお持ちでない場合は、本体とあわせてご購入ください。</p>
+
     <p class="pricenote">
       決済後、ダウンロードURLとライセンスキーをメールでお送りします（通常は数分以内、遅くとも1営業日以内）。<br>
       動作しない場合は、購入後 14 日以内にご連絡ください。修正版の提供、または返金にて対応します。<br>
@@ -353,6 +411,13 @@ footer .spacer{flex:1}
       <summary>パソコンを買い替えたら、また買い直しですか？</summary>
       <p>いいえ。同じライセンスキーをそのまま使えます。
       タスクのデータは、旧端末で JSON に書き出して新端末で読み込めば移せます。</p>
+    </details>
+
+    <details>
+      <summary>オプションはあとから足せますか？</summary>
+      <p>足せます。本体を買い直す必要はありません。オプションを購入すると、拡張パッケージのファイルと、
+      そのオプションが使えるライセンスキーをお送りします。アプリの「拡張」から読み込み、
+      「ライセンス」でキーを入れ替えれば、そのまま使えるようになります。記録済みのタスクはそのまま残ります。</p>
     </details>
 
     <details>

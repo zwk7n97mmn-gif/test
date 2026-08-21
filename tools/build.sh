@@ -28,6 +28,8 @@ fi
 # 2. 動作の確認（ここで落ちるものは配らない）
 python3 "$ROOT/tests/test_license.py" > /dev/null
 echo "  ライセンスの検証テスト: OK"
+python3 "$ROOT/tests/test_package.py" > /dev/null
+echo "  拡張パッケージの署名テスト: OK"
 
 # 3. 配布物を並べる
 mkdir -p "$STAGE/TaskDeck"
@@ -48,4 +50,49 @@ rm -f "$OUT"
 (cd "$STAGE" && zip -q -r "$OUT" TaskDeck)
 
 echo "  出力: ${OUT#"$ROOT/"}  ($(du -h "$OUT" | cut -f1))"
+
+# 6. 拡張（オプション）を 1 つずつ署名して、別売りの ZIP にする
+if [ -d "$ROOT/extensions" ]; then
+  for EXTDIR in "$ROOT/extensions"/*/; do
+    [ -f "$EXTDIR/manifest.json" ] || continue
+    # sample- で始まるものは開発者向けの見本なので、販売用の ZIP は作らない
+    case "$(basename "$EXTDIR")" in sample-*) continue ;; esac
+    EXTID="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['id'])" "$EXTDIR/manifest.json")"
+    EXTVER="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['version'])" "$EXTDIR/manifest.json")"
+    EXTNAME="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['name'])" "$EXTDIR/manifest.json")"
+
+    python3 "$ROOT/tools/pkg.py" build "$EXTDIR" --out "$OUTDIR" > /dev/null
+    python3 "$ROOT/tools/pkg.py" verify "$OUTDIR/$EXTID-$EXTVER.tdpkg" > /dev/null
+
+    EXTSTAGE="$STAGE/ext-$EXTID"
+    mkdir -p "$EXTSTAGE/$EXTID"
+    cp "$OUTDIR/$EXTID-$EXTVER.tdpkg" "$EXTSTAGE/$EXTID/"
+    if [ -f "$EXTDIR/README.md" ]; then
+      cp "$EXTDIR/README.md" "$EXTSTAGE/$EXTID/使い方.md"
+    fi
+    cat > "$EXTSTAGE/$EXTID/はじめにお読みください.txt" <<TXT
+$EXTNAME （TaskDeck 拡張 $EXTVER）
+
+■ 入れかた
+  1. TaskDeck.html をブラウザで開きます。
+  2. 画面右上の「⊞」（拡張）を押します。
+  3.「パッケージのファイルを選ぶ」で、このフォルダの $EXTID-$EXTVER.tdpkg を選びます。
+  4. 追加されると、左のメニューに項目が増えます。
+
+■ ライセンス
+  拡張つきのライセンスキーを「ライセンス」画面で登録すると、件数の制限がなくなります。
+  キーを登録するまでは評価としてお使いいただけます。
+
+■ ご注意
+  拡張を取り外すと、その拡張が保存したデータも消えます。
+  「⇅」→「JSON で書き出す」では拡張のデータは含まれません。
+  拡張ごとの書き出し（CSV）をお使いください。
+TXT
+    EXTZIP="$OUTDIR/taskdeck-$EXTID-$EXTVER.zip"
+    rm -f "$EXTZIP"
+    (cd "$EXTSTAGE" && zip -q -r "$EXTZIP" "$EXTID")
+    echo "  拡張: ${EXTZIP#"$ROOT/"}  ($(du -h "$EXTZIP" | cut -f1))"
+  done
+fi
+
 echo "完了しました。この ZIP をそのまま販売ページに置けます。"

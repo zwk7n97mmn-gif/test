@@ -26,6 +26,7 @@ html[data-theme="dark"]{
   --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
 }
 *{box-sizing:border-box}
+[hidden]{display:none !important}
 html,body{height:100%}
 body{
   margin:0; background:var(--bg); color:var(--text);
@@ -186,6 +187,21 @@ td.c-check{width:28px}
 .kbdlist{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px;align-items:center}
 kbd{font-family:inherit;font-size:11px;font-weight:700;border:1px solid var(--line-strong);border-bottom-width:2px;border-radius:5px;padding:1px 6px;background:var(--panel-2);white-space:nowrap}
 
+.extcard{border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;display:flex;gap:12px;align-items:flex-start;background:var(--panel-2)}
+.extcard .info{flex:1;min-width:0}
+.extcard .name{font-weight:700}
+.extcard .desc{font-size:13px;color:var(--muted);margin-top:2px}
+.extcard .meta{font-size:11.5px;color:var(--faint);margin-top:4px}
+.extcard .ops{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.switch{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer}
+.switch input{width:15px;height:15px;accent-color:var(--accent)}
+.pill{font-size:11px;padding:1px 8px;border-radius:999px;font-weight:700}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.trial{background:var(--warn-soft);color:var(--warn)}
+.pill.off{background:var(--panel);color:var(--faint);border:1px solid var(--line-strong)}
+.extempty{color:var(--faint);font-size:13px;border:1px dashed var(--line-strong);border-radius:var(--radius);padding:18px;text-align:center}
+.plugin-host{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+.plugin-error{background:var(--danger-soft);color:var(--danger);border-radius:var(--radius);padding:14px;font-size:13px}
 .trialbar{grid-column:1/-1;display:none;align-items:center;gap:10px;padding:7px 16px;background:var(--warn-soft);color:var(--warn);font-size:13px;border-bottom:1px solid var(--line)}
 .trialbar.show{display:flex}
 .trialbar .spacer{flex:1}
@@ -223,6 +239,7 @@ kbd{font-family:inherit;font-size:11px;font-weight:700;border:1px solid var(--li
     <div class="spacer"></div>
     <button class="iconbtn" id="themeBtn" title="表示テーマを切り替える" aria-label="表示テーマを切り替える">◐</button>
     <button class="iconbtn" id="helpBtn" title="キーボード操作" aria-label="キーボード操作">?</button>
+    <button class="iconbtn" id="extBtn" title="拡張" aria-label="拡張">⊞</button>
     <button class="iconbtn" id="dataBtn" title="データの保存と読み込み" aria-label="データの保存と読み込み">⇅</button>
     <button class="btn" id="licenseBtn">ライセンス</button>
   </header>
@@ -239,6 +256,10 @@ kbd{font-family:inherit;font-size:11px;font-weight:700;border:1px solid var(--li
     <div class="side-title">プロジェクト</div>
     <nav id="projectNav"></nav>
     <button class="addlink" id="addProjectBtn">＋ プロジェクトを追加</button>
+    <div id="pluginNavSection" hidden>
+      <div class="side-title">拡張</div>
+      <nav id="pluginNav"></nav>
+    </div>
     <div class="side-title">タグ</div>
     <nav id="tagNav"></nav>
   </aside>
@@ -312,6 +333,7 @@ kbd{font-family:inherit;font-size:11px;font-weight:700;border:1px solid var(--li
       <div class="progress"><i id="dProgress" style="width:0"></i></div>
       <button class="addlink" id="dAddSub" type="button">＋ サブタスクを追加</button>
     </div>
+    <div id="dExtPanels"></div>
     <div class="field">
       <label for="dNotes">メモ</label>
       <textarea id="dNotes" placeholder="手順・リンク・議事メモなど"></textarea>
@@ -358,11 +380,33 @@ kbd{font-family:inherit;font-size:11px;font-weight:700;border:1px solid var(--li
         <button class="btn" id="printBtn">印刷する</button>
       </div>
       <input type="file" id="importFile" accept="application/json,.json" hidden>
+      <div id="extExports" hidden></div>
       <div class="statusline" id="dataStatus"></div>
       <div class="licensebox" id="statsBox"></div>
       <button class="btn danger" id="resetAll" style="align-self:flex-start">すべてのデータを消す</button>
     </div>
     <footer><button class="btn" data-close="dataModal">閉じる</button></footer>
+  </div>
+</div>
+
+<!-- 拡張 -->
+<div class="overlay" id="extModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="extTitle">
+    <header id="extTitle">拡張</header>
+    <div class="body">
+      <p class="note">拡張パッケージ（.tdpkg）を読み込むと、タスク管理に機能を足せます。
+        パッケージは販売元の署名を確かめてから読み込むため、署名のないものや書き換えられたものは追加できません。</p>
+      <div id="extList"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" id="extInstallBtn">パッケージのファイルを選ぶ</button>
+        <button class="btn ghost" id="extPasteToggle">文字列を貼り付けて追加</button>
+      </div>
+      <input type="file" id="extFile" accept=".tdpkg,.json,application/json" hidden>
+      <textarea class="keytext" id="extPaste" hidden spellcheck="false"
+        placeholder="拡張パッケージの中身（{&quot;format&quot;:&quot;taskdeck-package/1&quot;, … } で始まる文字列）を貼り付けてください"></textarea>
+      <div class="statusline" id="extStatus"></div>
+    </div>
+    <footer><button class="btn" data-close="extModal">閉じる</button></footer>
   </div>
 </div>
 
@@ -589,7 +633,21 @@ const TaskDeckLicense = (function () {
     return { ok: true, payload };
   }
 
-  return { verifyKey, sha256 };
+  /**
+   * 任意の文字列に対する署名を検証する。拡張パッケージの検証に使う。
+   * message は UTF-8 の文字列、signature は base64url の 64 バイト。
+   */
+  function verifyDetached(publicKeyHex, message, signature) {
+    const publicKey = parsePublicKey(publicKeyHex);
+    if (!publicKey) return false;
+    try {
+      return ecdsaVerify(publicKey, new TextEncoder().encode(message), b64urlToBytes(signature));
+    } catch (e) {
+      return false;
+    }
+  }
+
+  return { verifyKey, verifyDetached, sha256 };
 })();
 // === license-verify:end ===
 
@@ -834,6 +892,7 @@ const DONE_COLUMN_LIMIT = 30;
 
 function matchesFilter(task) {
   const filter = data.settings.filter;
+  if (filter.type === "plugin") return false;   // 拡張の画面はタスク一覧を出さない
   if (filter.type === "project") return task.projectId === filter.value;
   if (filter.type === "tag") return task.tags.includes(filter.value);
   const view = SMART_VIEWS.find(v => v.id === filter.value) || SMART_VIEWS[3];
@@ -915,6 +974,8 @@ function renderSidebar() {
     for (const tag of task.tags) tags.set(tag, (tags.get(tag) || 0) + 1);
   }
   const sortedTags = [...tags.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ja")).slice(0, 20);
+  renderPluginNav();
+
   $("tagNav").innerHTML = sortedTags.length
     ? sortedTags.map(([tag, count]) => {
         const active = filter.type === "tag" && filter.value === tag;
@@ -924,8 +985,24 @@ function renderSidebar() {
     : `<div style="padding:4px 10px;color:var(--faint);font-size:12px">#タグ を付けるとここに並びます</div>`;
 }
 
+/** 拡張が画面を持っているときだけ、サイドバーに「拡張」の欄を出す。 */
+function renderPluginNav() {
+  const section = $("pluginNavSection");
+  const nav = $("pluginNav");
+  const filter = data.settings.filter;
+  section.hidden = contributions.views.length === 0;
+  nav.innerHTML = contributions.views.map(view => {
+    const active = filter.type === "plugin" && filter.value === view.key;
+    return `<button class="navitem${active ? " active" : ""}" data-filter="plugin" data-value="${escapeHtml(view.key)}">
+      <span style="width:14px;text-align:center">${escapeHtml(view.icon)}</span>
+      <span>${escapeHtml(view.label)}</span>
+      ${view.api.entitled ? "" : `<span class="count">評価</span>`}</button>`;
+  }).join("");
+}
+
 function currentViewName() {
   const filter = data.settings.filter;
+  if (filter.type === "plugin") return findPluginView(filter.value)?.label || "拡張";
   if (filter.type === "project") return projectOf(filter.value)?.name || "プロジェクト";
   if (filter.type === "tag") return "#" + filter.value;
   return (SMART_VIEWS.find(v => v.id === filter.value) || SMART_VIEWS[3]).label;
@@ -933,6 +1010,15 @@ function currentViewName() {
 
 function renderHead() {
   $("viewTitle").textContent = currentViewName();
+  const pluginMode = data.settings.filter.type === "plugin";
+  // 拡張の画面ではタスクの入力欄と表示切り替えを隠す（別物の画面なので）
+  $("quickAddForm").hidden = pluginMode;
+  document.querySelector(".viewtabs").hidden = pluginMode;
+  if (pluginMode) {
+    const view = findPluginView(data.settings.filter.value);
+    $("viewSub").textContent = view && !view.api.entitled ? "評価中（ライセンスキーで制限が外れます）" : "";
+    return;
+  }
   const tasks = visibleTasks();
   const done = tasks.filter(t => t.status === "done").length;
   const overdue = tasks.filter(t => t.status !== "done" && t.due && daysUntil(t.due) < 0).length;
@@ -948,6 +1034,10 @@ function renderHead() {
 
 function renderMain() {
   const scroller = $("scroller");
+  if (data.settings.filter.type === "plugin") {
+    renderPluginView(scroller);
+    return;
+  }
   const tasks = visibleTasks();
   if (!tasks.length) {
     scroller.innerHTML = `<div class="empty"><div class="big">${ui.query.trim() ? "見つかりませんでした" : "タスクはありません"}</div>
@@ -956,6 +1046,24 @@ function renderMain() {
   }
   scroller.innerHTML = data.settings.view === "board" ? boardHtml(tasks) : listHtml(tasks);
   if (data.settings.view === "board") wireBoardDragging();
+}
+
+function renderPluginView(scroller) {
+  const view = findPluginView(data.settings.filter.value);
+  scroller.innerHTML = "";
+  if (!view) {
+    data.settings.filter = { type: "smart", value: "all" };
+    render();
+    return;
+  }
+  const container = document.createElement("div");
+  scroller.appendChild(container);
+  try {
+    view.render(container, { entitled: view.api.entitled });
+  } catch (error) {
+    container.innerHTML = `<div class="plugin-error">拡張「${escapeHtml(view.label)}」の画面でエラーが起きました。<br>
+      ${escapeHtml(String(error && error.message ? error.message : error))}</div>`;
+  }
 }
 
 function taskCardHtml(task) {
@@ -1127,8 +1235,29 @@ function fillDrawer(task) {
     .join("") || `<option value="">（プロジェクトなし）</option>`;
   renderTags(task);
   renderSubtasks(task);
+  renderTaskPanels(task);
   $("dStamp").textContent = `更新 ${formatStamp(task.updatedAt)}`;
   $("dStamp").title = `作成 ${formatStamp(task.createdAt)}／更新 ${formatStamp(task.updatedAt)}`;
+}
+
+/** 拡張がタスク詳細に足した欄を描く。 */
+function renderTaskPanels(task) {
+  const host = $("dExtPanels");
+  host.innerHTML = "";
+  for (const panel of contributions.taskPanels) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "field";
+    const label = document.createElement("label");
+    label.textContent = panel.title;
+    const body = document.createElement("div");
+    wrapper.append(label, body);
+    host.appendChild(wrapper);
+    try {
+      panel.render(body, JSON.parse(JSON.stringify(task)));
+    } catch (error) {
+      body.innerHTML = `<div class="plugin-error">${escapeHtml(String(error && error.message ? error.message : error))}</div>`;
+    }
+  }
 }
 
 function renderTags(task) {
@@ -1267,6 +1396,402 @@ function clearStatusLine(id) {
 }
 
 /* ============================================================
+   6.5 拡張（プラグイン）
+   ------------------------------------------------------------
+   タスク管理そのものはここから下に依存しない。拡張が 1 つも入っていない
+   ときの動きは、拡張機能が無かったころとまったく同じになる。
+
+   拡張は「販売元が署名した JavaScript」を読み込む仕組みで、
+   署名の検証にはライセンスキーと同じ公開鍵を使う。
+   ============================================================ */
+const PLUGIN_STORAGE_KEY = "taskdeck.plugins.v1";
+const PLUGIN_API_VERSION = "1";
+
+/** 読み込み済みの拡張。{ manifest, code, signature, enabled, error } */
+let plugins = [];
+/** 拡張が登録した画面・パネル・書き出し。拡張の入れ替えのたびに作り直す。 */
+let contributions = { views: [], taskPanels: [], exports: [] };
+
+// === package-canonical:start ===
+/** Python 側（tools/pkg.py）と同じ並びの JSON にする。署名の対象を一致させるため。 */
+function canonicalJson(value) {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return "[" + value.map(canonicalJson).join(",") + "]";
+  return "{" + Object.keys(value).sort()
+    .map(key => JSON.stringify(key) + ":" + canonicalJson(value[key])).join(",") + "}";
+}
+
+function packageSignatureBody(pkg) {
+  return canonicalJson({ code: pkg.code, manifest: pkg.manifest });
+}
+// === package-canonical:end ===
+
+/** パッケージの形が正しいか調べる。問題があれば日本語の理由を返す。 */
+function validatePackage(pkg) {
+  if (!pkg || typeof pkg !== "object") return "パッケージの中身を読み取れませんでした。";
+  if (pkg.format !== "taskdeck-package/1") return "これは TaskDeck の拡張パッケージではないようです。";
+  const manifest = pkg.manifest;
+  if (!manifest || typeof manifest !== "object") return "パッケージに manifest がありません。";
+  for (const field of ["id", "name", "version", "apiVersion"]) {
+    if (typeof manifest[field] !== "string" || !manifest[field]) return `manifest の ${field} がありません。`;
+  }
+  if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(manifest.id)) return "manifest の id に使えない文字が入っています。";
+  if (manifest.apiVersion !== PLUGIN_API_VERSION) {
+    return `この拡張は TaskDeck の拡張 API v${manifest.apiVersion} 向けです。このアプリが対応しているのは v${PLUGIN_API_VERSION} です。`;
+  }
+  if (typeof pkg.code !== "string" || !pkg.code.trim()) return "パッケージにプログラムが入っていません。";
+  if (typeof pkg.signature !== "string" || !pkg.signature) return "パッケージに署名がありません。";
+  if (!TaskDeckLicense.verifyDetached(LICENSE_PUBLIC_KEY, packageSignatureBody(pkg), pkg.signature)) {
+    return "署名が確認できませんでした。販売元が配布したパッケージをそのままお使いください。";
+  }
+  return null;
+}
+
+/** この拡張を製品として使う権利があるか。ライセンスキーの中に拡張の名前が入っていれば有効。 */
+function isEntitled(manifest) {
+  if (!isLicensed()) return false;
+  const granted = Array.isArray(license.payload.x) ? license.payload.x : [];
+  return granted.includes(manifest.entitlement || manifest.id);
+}
+
+function loadPlugins() {
+  let saved = [];
+  try {
+    saved = JSON.parse(localStorage.getItem(PLUGIN_STORAGE_KEY) || "[]");
+  } catch (e) {
+    saved = [];
+  }
+  plugins = (Array.isArray(saved) ? saved : []).map(entry => ({
+    manifest: entry.manifest, code: entry.code, signature: entry.signature,
+    format: entry.format, enabled: entry.enabled !== false, error: null,
+  }));
+  activatePlugins();
+}
+
+function savePlugins() {
+  try {
+    localStorage.setItem(PLUGIN_STORAGE_KEY, JSON.stringify(plugins.map(entry => ({
+      format: entry.format, manifest: entry.manifest, code: entry.code,
+      signature: entry.signature, enabled: entry.enabled,
+    }))));
+  } catch (e) {
+    toast("拡張の設定を保存できませんでした。");
+  }
+}
+
+/** 有効な拡張を読み込み直す。登録内容は毎回まっさらから作る。 */
+function activatePlugins() {
+  contributions = { views: [], taskPanels: [], exports: [] };
+  for (const entry of plugins) {
+    entry.error = null;
+    if (!entry.enabled) continue;
+    // 保存されたあとで書き換えられていないか、読み込むたびに確かめる
+    const problem = validatePackage(entry);
+    if (problem) {
+      entry.error = problem;
+      entry.enabled = false;
+      continue;
+    }
+    try {
+      const factory = new Function("api", '"use strict";\n' + entry.code);
+      factory(makePluginApi(entry));
+    } catch (error) {
+      entry.error = "読み込み中にエラーが起きました: " + String(error && error.message ? error.message : error);
+      entry.enabled = false;
+    }
+  }
+  // いま開いている画面の拡張が消えていたら、タスクの画面へ戻す
+  if (data.settings.filter.type === "plugin" && !findPluginView(data.settings.filter.value)) {
+    data.settings.filter = { type: "smart", value: "all" };
+  }
+}
+
+const findPluginView = key => contributions.views.find(view => view.key === key) || null;
+
+/** 拡張へ渡す窓口。ここに書いてあることが拡張にできることのすべて。 */
+function makePluginApi(entry) {
+  const manifest = entry.manifest;
+  const storageKey = "taskdeck.ext." + manifest.id + ".v1";
+  const entitled = isEntitled(manifest);
+  const cloneTask = task => JSON.parse(JSON.stringify(task));
+
+  const api = {
+    version: PLUGIN_API_VERSION,
+    manifest: JSON.parse(JSON.stringify(manifest)),
+    /** 製品として購入済みなら true。false のときは評価として動かす。 */
+    entitled,
+    /** 評価中に扱えるデータ件数の目安。manifest で決める。 */
+    trialLimit: entitled ? null : (Number.isFinite(manifest.trialLimit) ? manifest.trialLimit : null),
+
+    storage: {
+      key: storageKey,
+      get(fallback) {
+        try {
+          const raw = localStorage.getItem(storageKey);
+          return raw ? JSON.parse(raw) : fallback;
+        } catch (e) {
+          return fallback;
+        }
+      },
+      set(value) {
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(value));
+          return true;
+        } catch (e) {
+          toast("拡張のデータを保存できませんでした。ブラウザの空き容量をご確認ください。");
+          return false;
+        }
+      },
+    },
+
+    /** 左のメニューに独自の画面を足す。render(container) が中身を描く。 */
+    registerView(view) {
+      if (!view || typeof view.render !== "function" || !view.id) return;
+      contributions.views.push({
+        key: manifest.id + ":" + view.id,
+        pluginId: manifest.id,
+        label: String(view.label || manifest.name),
+        icon: String(view.icon || "▦"),
+        render: view.render,
+        api,
+      });
+    },
+
+    /** タスクの詳細パネルに独自の欄を足す。render(container, task) が中身を描く。 */
+    registerTaskPanel(panel) {
+      if (!panel || typeof panel.render !== "function" || !panel.id) return;
+      contributions.taskPanels.push({
+        key: manifest.id + ":" + panel.id,
+        pluginId: manifest.id,
+        title: String(panel.title || manifest.name),
+        render: panel.render,
+        api,
+      });
+    },
+
+    /** 「データの保存と読み込み」に書き出しボタンを足す。 */
+    registerExport(exporter) {
+      if (!exporter || typeof exporter.run !== "function" || !exporter.id) return;
+      contributions.exports.push({
+        key: manifest.id + ":" + exporter.id,
+        pluginId: manifest.id,
+        label: String(exporter.label || manifest.name),
+        run: exporter.run,
+        api,
+      });
+    },
+
+    /** タスクの読み書き。拡張からは、この 4 つだけができる。 */
+    tasks: {
+      list: () => data.tasks.map(cloneTask),
+      get: id => {
+        const task = taskById(id);
+        return task ? cloneTask(task) : null;
+      },
+      create: partial => {
+        if (taskLimitReached()) {
+          toast(`評価版で保存できるタスクは ${TRIAL_TASK_LIMIT} 件までです。`);
+          return null;
+        }
+        const task = newTask({
+          title: String(partial && partial.title || "").slice(0, 500),
+          notes: String(partial && partial.notes || ""),
+          projectId: partial && partial.projectId || (data.projects[0] ? data.projects[0].id : null),
+          due: partial && isDateStr(partial.due) ? partial.due : null,
+          priority: [1, 2, 3].includes(Number(partial && partial.priority)) ? Number(partial.priority) : 2,
+          tags: Array.isArray(partial && partial.tags) ? partial.tags.slice(0, 12).map(String) : [],
+          order: Math.min(0, ...data.tasks.map(item => item.order)) - 1,
+        });
+        if (!task.title) return null;
+        data.tasks.push(task);
+        save();
+        render();
+        return cloneTask(task);
+      },
+      update: (id, patch) => {
+        const task = taskById(id);
+        if (!task || !patch) return null;
+        if (typeof patch.title === "string") task.title = patch.title.slice(0, 500);
+        if (typeof patch.notes === "string") task.notes = patch.notes;
+        if (STATUSES.some(s => s.id === patch.status)) setStatus(task, patch.status);
+        if ([1, 2, 3].includes(Number(patch.priority))) task.priority = Number(patch.priority);
+        if (patch.due === null || isDateStr(patch.due)) task.due = patch.due;
+        touch(task);
+        save();
+        render();
+        return cloneTask(task);
+      },
+    },
+
+    /** 画面まわりの道具。本体と見た目をそろえるために用意している。 */
+    ui: {
+      toast,
+      escapeHtml,
+      download,
+      confirm: message => window.confirm(message),
+      formatStamp,
+      todayStr,
+      refresh: () => render(),
+      openTask: id => openDrawer(id),
+      /** 拡張の CSS を 1 度だけ差し込む。 */
+      injectStyle(css) {
+        const styleId = "ext-style-" + manifest.id;
+        if (document.getElementById(styleId)) return;
+        const style = document.createElement("style");
+        style.id = styleId;
+        style.textContent = String(css);
+        document.head.appendChild(style);
+      },
+    },
+  };
+  return api;
+}
+
+/* ---- 追加・削除 ---- */
+
+/** 文字列（ファイルの中身）から拡張を追加する。{ ok, message } を返す。 */
+function installPackage(text) {
+  let pkg;
+  try {
+    pkg = JSON.parse(text);
+  } catch (e) {
+    return { ok: false, message: "パッケージを読み取れませんでした。ファイルが壊れていないかご確認ください。" };
+  }
+  const problem = validatePackage(pkg);
+  if (problem) return { ok: false, message: problem };
+
+  const entry = {
+    format: pkg.format, manifest: pkg.manifest, code: pkg.code,
+    signature: pkg.signature, enabled: true, error: null,
+  };
+  const existing = plugins.findIndex(item => item.manifest.id === pkg.manifest.id);
+  const replaced = existing >= 0 ? plugins[existing].manifest.version : null;
+  if (existing >= 0) plugins[existing] = entry; else plugins.push(entry);
+
+  savePlugins();
+  activatePlugins();
+  render();
+
+  const state = isEntitled(pkg.manifest) ? "製品版として使えます。"
+    : (entry.manifest.trialLimit ? `評価として使えます（データ ${entry.manifest.trialLimit} 件まで）。` : "評価として使えます。");
+  return {
+    ok: true,
+    message: replaced
+      ? `${pkg.manifest.name} を ${replaced} から ${pkg.manifest.version} に更新しました。`
+      : `${pkg.manifest.name} ${pkg.manifest.version} を追加しました。${state}`,
+  };
+}
+
+function setPluginEnabled(id, enabled) {
+  const entry = plugins.find(item => item.manifest.id === id);
+  if (!entry) return;
+  entry.enabled = enabled;
+  savePlugins();
+  activatePlugins();
+  render();
+  renderPluginList();
+}
+
+function removePlugin(id) {
+  const entry = plugins.find(item => item.manifest.id === id);
+  if (!entry) return;
+  if (!confirm(`「${entry.manifest.name}」を取り外します。この拡張が保存したデータも消えます。よろしいですか？`)) return;
+  plugins = plugins.filter(item => item.manifest.id !== id);
+  try {
+    localStorage.removeItem("taskdeck.ext." + id + ".v1");
+  } catch (e) { /* 消せなくても続行する */ }
+  savePlugins();
+  activatePlugins();
+  render();
+  renderPluginList();
+  toast(`「${entry.manifest.name}」を取り外しました`);
+}
+
+/* ---- 拡張ダイアログ ---- */
+
+function renderPluginList() {
+  const list = $("extList");
+  if (!plugins.length) {
+    list.innerHTML = `<div class="extempty">まだ拡張は入っていません。<br>
+      購入した拡張パッケージ（.tdpkg）を下のボタンから読み込んでください。</div>`;
+    return;
+  }
+  list.innerHTML = plugins.map(entry => {
+    const manifest = entry.manifest;
+    const entitled = isEntitled(manifest);
+    const pill = !entry.enabled ? `<span class="pill off">停止中</span>`
+      : entitled ? `<span class="pill ok">製品版</span>`
+      : `<span class="pill trial">評価中${manifest.trialLimit ? `（${manifest.trialLimit} 件まで）` : ""}</span>`;
+    return `<div class="extcard">
+      <div class="info">
+        <div class="name">${escapeHtml(manifest.name)} ${pill}</div>
+        ${manifest.description ? `<div class="desc">${escapeHtml(manifest.description)}</div>` : ""}
+        <div class="meta">バージョン ${escapeHtml(manifest.version)}
+          ${manifest.vendor ? "／提供 " + escapeHtml(manifest.vendor) : ""}
+          ／拡張API v${escapeHtml(manifest.apiVersion)}</div>
+        ${entry.error ? `<div class="desc" style="color:var(--danger)">${escapeHtml(entry.error)}</div>` : ""}
+      </div>
+      <div class="ops">
+        <label class="switch"><input type="checkbox" data-ext-toggle="${manifest.id}"${entry.enabled ? " checked" : ""}>使う</label>
+        <button class="btn ghost" data-ext-remove="${manifest.id}" style="color:var(--danger)">取り外す</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function openExtModal() {
+  renderPluginList();
+  clearStatusLine("extStatus");
+  $("extPaste").hidden = true;
+  $("extPaste").value = "";
+  openModal("extModal");
+}
+
+function wireExtensions() {
+  $("extBtn").addEventListener("click", openExtModal);
+  $("extInstallBtn").addEventListener("click", () => $("extFile").click());
+  $("extFile").addEventListener("change", event => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = installPackage(String(reader.result));
+      setStatusLine("extStatus", result.message, result.ok);
+      renderPluginList();
+    };
+    reader.readAsText(file);
+    event.target.value = "";
+  });
+  $("extPasteToggle").addEventListener("click", () => {
+    const box = $("extPaste");
+    if (box.hidden) {
+      box.hidden = false;
+      box.focus();
+      $("extPasteToggle").textContent = "貼り付けた内容で追加する";
+    } else if (box.value.trim()) {
+      const result = installPackage(box.value);
+      setStatusLine("extStatus", result.message, result.ok);
+      renderPluginList();
+      if (result.ok) {
+        box.value = "";
+        box.hidden = true;
+        $("extPasteToggle").textContent = "文字列を貼り付けて追加";
+      }
+    } else {
+      setStatusLine("extStatus", "追加する内容を貼り付けてください。", false);
+    }
+  });
+  $("extList").addEventListener("click", event => {
+    const remove = event.target.closest("[data-ext-remove]");
+    if (remove) removePlugin(remove.dataset.extRemove);
+  });
+  $("extList").addEventListener("change", event => {
+    const toggle = event.target.closest("[data-ext-toggle]");
+    if (toggle) setPluginEnabled(toggle.dataset.extToggle, toggle.checked);
+  });
+}
+
+/* ============================================================
    7. 画面の操作をつなぐ
    ============================================================ */
 function wireEvents() {
@@ -1380,7 +1905,12 @@ function wireEvents() {
 
   // --- ダイアログ ---
   $("helpBtn").addEventListener("click", () => openModal("helpModal"));
-  $("dataBtn").addEventListener("click", () => { renderStats(); clearStatusLine("dataStatus"); openModal("dataModal"); });
+  $("dataBtn").addEventListener("click", () => {
+    renderStats();
+    renderPluginExports();
+    clearStatusLine("dataStatus");
+    openModal("dataModal");
+  });
   $("licenseBtn").addEventListener("click", openLicenseModal);
   $("trialActivate").addEventListener("click", openLicenseModal);
   for (const button of document.querySelectorAll("[data-close]")) {
@@ -1391,6 +1921,7 @@ function wireEvents() {
   }
 
   wireLicense();
+  wireExtensions();
   wireDataTools();
   wireProjectModal();
   wireKeyboard();
@@ -1429,6 +1960,7 @@ function wireLicense() {
     if (!result.ok) { setStatusLine("licenseStatus", result.reason, false); return; }
     license = { key, payload: result.payload };
     localStorage.setItem(LICENSE_STORAGE_KEY, JSON.stringify({ key }));
+    activatePlugins();   // 拡張の利用権はキーに書かれているため、読み込み直す
     setStatusLine("licenseStatus", "登録しました。制限が解除されました。ご購入ありがとうございます。", true);
     renderLicenseState();
     render();
@@ -1437,6 +1969,7 @@ function wireLicense() {
   $("licenseRemove").addEventListener("click", () => {
     localStorage.removeItem(LICENSE_STORAGE_KEY);
     license = null;
+    activatePlugins();
     renderLicenseState();
     setStatusLine("licenseStatus", "この端末の登録を解除しました。キーは再度登録できます。", true);
     $("licenseKey").value = "";
@@ -1477,6 +2010,35 @@ function toCsv(tasks) {
   ]);
   // Excel でそのまま開けるよう BOM を付ける
   return "﻿" + [header, ...rows].map(row => row.map(quote).join(",")).join("\r\n");
+}
+
+/** 拡張が足した書き出しボタンを描く。 */
+function renderPluginExports() {
+  const host = $("extExports");
+  host.innerHTML = "";
+  if (!contributions.exports.length) { host.hidden = true; return; }
+  host.hidden = false;
+  const title = document.createElement("div");
+  title.style.cssText = "font-size:11px;font-weight:700;color:var(--faint);letter-spacing:.06em";
+  title.textContent = "拡張の書き出し";
+  host.appendChild(title);
+  const row = document.createElement("div");
+  row.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;margin-top:6px";
+  for (const exporter of contributions.exports) {
+    const button = document.createElement("button");
+    button.className = "btn";
+    button.textContent = exporter.label;
+    button.onclick = () => {
+      try {
+        exporter.run();
+        setStatusLine("dataStatus", `「${exporter.label}」を書き出しました。`, true);
+      } catch (error) {
+        setStatusLine("dataStatus", "書き出しに失敗しました: " + String(error && error.message ? error.message : error), false);
+      }
+    };
+    row.appendChild(button);
+  }
+  host.appendChild(row);
 }
 
 function renderStats() {
@@ -1633,6 +2195,7 @@ function wireKeyboard() {
 function boot() {
   load();
   license = loadLicense();
+  loadPlugins();
   document.documentElement.dataset.theme = data.settings.theme === "dark" ? "dark" : "light";
   wireEvents();
   render();
