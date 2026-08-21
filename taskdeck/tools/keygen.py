@@ -122,6 +122,9 @@ def cmd_issue(args: argparse.Namespace) -> None:
         "s": args.seats,
         "i": dt.date.today().isoformat(),
     }
+    extensions = sorted({name.strip() for name in (args.ext or []) if name.strip()})
+    if extensions:
+        payload["x"] = extensions
     if args.expires:
         try:
             dt.date.fromisoformat(args.expires)
@@ -138,15 +141,17 @@ def cmd_issue(args: argparse.Namespace) -> None:
     with LEDGER_PATH.open("a", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         if is_new:
-            writer.writerow(["発行日", "購入者", "プラン", "台数", "有効期限", "メモ", "キー"])
+            writer.writerow(["発行日", "購入者", "プラン", "台数", "有効期限", "拡張", "メモ", "キー"])
         writer.writerow(
-            [payload["i"], args.name, args.plan, args.seats, args.expires or "無期限", args.note or "", key]
+            [payload["i"], args.name, args.plan, args.seats, args.expires or "無期限",
+             " ".join(extensions), args.note or "", key]
         )
 
     print(f"購入者   : {args.name}")
     print(f"プラン   : {PLANS.get(args.plan, args.plan)}")
     print(f"台数     : {args.seats}")
     print(f"有効期限 : {args.expires or '無期限'}")
+    print(f"拡張     : {'、'.join(extensions) if extensions else 'なし（基本のタスク管理のみ）'}")
     print(f"控え     : {LEDGER_PATH}")
     print("\n--- ここから下をそのまま購入者に渡してください ---")
     print(key)
@@ -173,6 +178,8 @@ def cmd_verify(args: argparse.Namespace) -> None:
     print(f"  台数     : {payload.get('s')}")
     print(f"  発行日   : {payload.get('i')}")
     print(f"  有効期限 : {payload.get('e', '無期限')}")
+    granted = payload.get("x") or []
+    print(f"  拡張     : {'、'.join(granted) if granted else 'なし（基本のタスク管理のみ）'}")
 
 
 def cmd_pubkey(_: argparse.Namespace) -> None:
@@ -195,6 +202,10 @@ def main() -> None:
     issue.add_argument("--plan", default="personal", choices=sorted(PLANS), help="プラン種別")
     issue.add_argument("--seats", type=int, default=1, help="利用可能な台数")
     issue.add_argument("--expires", help="有効期限 YYYY-MM-DD（省略すると無期限）")
+    issue.add_argument(
+        "--ext", action="append",
+        help="この購入者が使える拡張の権利名（例: --ext tax）。複数指定できる",
+    )
     issue.add_argument("--note", help="控えに残すメモ（注文番号など）")
     issue.set_defaults(func=cmd_issue)
 

@@ -1,0 +1,10 @@
+{
+  "id": "tax",
+  "name": "確定申告データ管理",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "vendor": "〔販売者名〕",
+  "description": "複式簿記で仕訳を記録し、総勘定元帳・試算表・損益計算書・貸借対照表まで集計します。青色申告の決算書づくりに使えます。",
+  "entitlement": "tax",
+  "trialLimit": 30
+}

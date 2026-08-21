@@ -27,6 +27,9 @@ jobs:
       # 発行（Python）と検証（アプリ内の JavaScript）が食い違っていないか確かめる
       - run: python tests/test_license.py
         working-directory: taskdeck
+      # 拡張パッケージの署名も同じ鍵で行うため、そちらも突き合わせる
+      - run: python tests/test_package.py
+        working-directory: taskdeck
 
   ui:
     name: 画面操作の確認
@@ -46,6 +49,9 @@ jobs:
       - name: 実際のブラウザで操作してみる
         run: node taskdeck/tests/ui_smoke.mjs
 
+      - name: 拡張のしくみを端から端まで確かめる
+        run: node taskdeck/tests/ui_extension.mjs
+
   package:
     name: 配布物の組み立て
     runs-on: ubuntu-latest
@@ -60,10 +66,13 @@ jobs:
           python taskdeck/tools/keygen.py init
           bash taskdeck/tools/build.sh
           unzip -l taskdeck/dist/taskdeck-1.0.0.zip
+          unzip -l taskdeck/dist/taskdeck-tax-1.0.0.zip
       - name: 秘密鍵が配布物に混ざっていないか確認する
         run: |
-          if unzip -p taskdeck/dist/taskdeck-1.0.0.zip | grep -q "private_key"; then
-            echo "配布物に秘密鍵が含まれています" >&2
-            exit 1
-          fi
+          for ZIP in taskdeck/dist/*.zip; do
+            if unzip -p "$ZIP" | grep -q "private_key"; then
+              echo "配布物に秘密鍵が含まれています: $ZIP" >&2
+              exit 1
+            fi
+          done
           echo "秘密鍵の混入なし"

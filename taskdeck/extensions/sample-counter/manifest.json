@@ -1,0 +1,10 @@
+{
+  "id": "sample-counter",
+  "name": "見本：カウンタ",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "vendor": "〔販売者名〕",
+  "description": "拡張の作り方を確かめるための最小の見本です。数を数えるだけの拡張です。",
+  "entitlement": "sample-counter",
+  "trialLimit": 5
+}

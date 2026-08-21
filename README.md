@@ -82,5 +82,11 @@ python tests/test_logic.py         # ロジックのテスト
 ## このリポジトリのもうひとつの成果物
 
 `taskdeck/` に、単体の HTML ファイルで動くタスク管理ツール **TaskDeck** と、
-その販売一式（販売ページ・ライセンス発行の仕組み・規約・マニュアル）が入っています。
-上の自動投稿の仕組みとは独立して動きます。詳しくは [taskdeck/README.md](taskdeck/README.md) をご覧ください。
+その販売一式（販売ページ・ライセンス発行の仕組み・拡張パッケージ・規約・マニュアル）が入っています。
+`taskdeck-docs/` は、その操作説明・設計・仕様書をまとめた文書群です
+（そのまま別リポジトリとして切り出せます → [SPLIT.md](taskdeck-docs/SPLIT.md)）。
+
+上の自動投稿の仕組みとは独立して動きます。
+
+- 製品と販売一式: [taskdeck/README.md](taskdeck/README.md)
+- ドキュメント: [taskdeck-docs/README.md](taskdeck-docs/README.md)
