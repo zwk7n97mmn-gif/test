@@ -49,6 +49,10 @@ check "ワークフローとテンプレートが YAML として読める" "$Y"
 python3 "$ROOT/scripts/check_sync.py" > /dev/null && S=true || S=false
 check "refs.json / SKILL.md / 運用仕様.md の一覧が一致している" "$S"
 
+# ドキュメントのツリーと実体
+python3 "$ROOT/scripts/check_tree.py" > /dev/null && T=true || T=false
+check "フォルダ構成.md のツリーが実体と一致している" "$T"
+
 echo
 if [ "$FAIL" -gt 0 ]; then echo "$FAIL 件失敗しました。"; exit 1; fi
 echo "すべて通りました。"
