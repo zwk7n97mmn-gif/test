@@ -94,6 +94,7 @@ python3 scripts/wiki_lint.py --root ../other-wiki  # 別のwikiを見る
 | `image_layout` | 画像が「`_image/` ＋ ページの配置パス ＋ ページ名」に置かれていない |
 | `details` | `<details>` の中身が `<div>` で囲まれていない（表やリンクが生で出る） |
 | `anchor_placement` | アンカーが見出し行の外にある（直後の見出しが飲み込まれる） |
+| `styling` | 色（インラインCSS・`<font>`）で意味を表している（消えると意味ごと消える） |
 
 `wiki-lint.json` の `checks` で、個別に切れます。段階的に入れるときは、
 守れている検査だけ `true` にして、残りは後から上げてください。

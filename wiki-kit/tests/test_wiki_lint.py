@@ -279,6 +279,28 @@ def main() -> None:
         code, out = run(w, "--only", "anchors")
         check(code == 0, "バッククォート2つで囲んだ中身は本物の定義として数えない")
 
+        # --- 色で意味を表さない ---
+        w = base / "style_color"
+        build(w, '# ホーム\n\n<span style="color: red; background: white;">重要</span>\n', {})
+        code, out = run(w, "--only", "styling")
+        check(code == 1 and "色は消える" in out, "色で意味を表しているのを見つける")
+
+        w = base / "style_font"
+        build(w, "# ホーム\n\n<font color=\"red\">重要</font>\n", {})
+        code, out = run(w, "--only", "styling")
+        check(code == 1 and "<font>" in out, "<font> を見つける")
+
+        w = base / "style_ok"
+        build(w, '# ホーム\n\n> 🚨 **重要**\n\n<img width="900" src="_image/_HOME/01.png" alt="図">\n',
+              {}, files=["_image/_HOME/01.png"])
+        code, out = run(w, "--only", "styling")
+        check(code == 0, "色以外の属性（width）は咎めない")
+
+        w = base / "style_example"
+        build(w, '# ホーム\n\n書いてはいけない例: `<span style="color: red;">`\n', {})
+        code, out = run(w, "--only", "styling")
+        check(code == 0, "書き方の例として貼った色指定は拾わない")
+
         w = base / "cross_repo"
         build(w, "# ホーム\n\n- [別のツール](../other/README.md)\n", {})
         (base / "other").mkdir(parents=True, exist_ok=True)
