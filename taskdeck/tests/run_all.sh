@@ -21,6 +21,8 @@ run() {
 
 run "ライセンスの署名と検証" python3 "$HERE/test_license.py"
 run "拡張パッケージの署名" python3 "$HERE/test_package.py"
+run "発行の控え（台帳）" python3 "$HERE/test_ledger.py"
+run "売り始める前の確認" python3 "$HERE/test_preflight.py"
 
 # ⚠ playwright はこのリポジトリの外には無い。無いことは失敗ではない
 if node -e "require.resolve('playwright')" > /dev/null 2>&1; then
