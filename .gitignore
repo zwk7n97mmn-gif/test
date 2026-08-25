@@ -1,7 +1,5 @@
-# テスト実行で出る一時ファイル
-claude-stderr.log
-usage-limit.txt
-refs-status.txt
-prompt.txt
-reply.md
-comments.json
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
