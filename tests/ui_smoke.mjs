@@ -1,7 +1,7 @@
 /**
  * アプリを実際のブラウザで動かして確かめる。
  *
- *   npm i playwright && node taskdeck/tests/ui_smoke.mjs
+ *   npm i playwright && node tests/ui_smoke.mjs
  *
  * 画面の見た目ではなく「操作したら期待どおりの結果になるか」を見る。
  */

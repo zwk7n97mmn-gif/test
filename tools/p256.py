@@ -1,7 +1,7 @@
 """NIST P-256 (secp256r1) の ECDSA を標準ライブラリだけで実装したもの。
 
 ライセンスキーの署名に使う。外部パッケージを入れなくても
-`python taskdeck/tools/keygen.py` が動くようにするためだけの実装で、
+`python tools/keygen.py` が動くようにするためだけの実装で、
 用途はライセンス発行に限定している。
 
 対になる検証側は app/taskdeck.html の中に JavaScript で同じ計算が入っている。

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """拡張パッケージ（.tdpkg）を作る・確かめるツール（販売者・拡張開発者用）。
 
-    python taskdeck/tools/pkg.py build extensions/tax     # パッケージを作る
-    python taskdeck/tools/pkg.py verify dist/tax-1.0.0.tdpkg
-    python taskdeck/tools/pkg.py info   dist/tax-1.0.0.tdpkg
+    python tools/pkg.py build extensions/tax     # パッケージを作る
+    python tools/pkg.py verify dist/tax-1.0.0.tdpkg
+    python tools/pkg.py info   dist/tax-1.0.0.tdpkg
 
 パッケージはライセンスキーと同じ秘密鍵で署名する。
 アプリ側は公開鍵で確かめてから読み込むため、署名のないコードは実行されない。
@@ -114,7 +114,7 @@ def main() -> None:
 
     build = sub.add_parser("build", help="拡張のフォルダから署名済みパッケージを作る")
     build.add_argument("source", help="manifest.json と main.js があるフォルダ")
-    build.add_argument("--out", help="出力先フォルダ（既定: taskdeck/dist）")
+    build.add_argument("--out", help="出力先フォルダ（既定: dist）")
     build.set_defaults(func=cmd_build)
 
     verify = sub.add_parser("verify", help="パッケージの署名を確かめる")

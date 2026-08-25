@@ -1,6 +1,6 @@
 """ライセンスキーの発行（Python）と検証（アプリ内の JavaScript）が一致することを確かめる。
 
-  python taskdeck/tests/test_license.py
+  python tests/test_license.py
 
 Node.js があれば JavaScript 側も実際に実行して突き合わせる。無い場合は Python 側だけ検証する。
 """

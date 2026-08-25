@@ -1,6 +1,6 @@
 """拡張パッケージの署名（Python）と検証（アプリ内の JavaScript）が一致することを確かめる。
 
-  python taskdeck/tests/test_package.py
+  python tests/test_package.py
 
 署名の対象は「並び順を固定した JSON」なので、Python と JavaScript で
 1 バイトでも食い違うと正しいパッケージが弾かれてしまう。そこを実際に突き合わせる。

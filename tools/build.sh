@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # 配布用の ZIP を作る。
 #
-#   bash taskdeck/tools/build.sh            # 既定のバージョンで作る
-#   VERSION=1.1.0 bash taskdeck/tools/build.sh
+#   bash tools/build.sh            # 既定のバージョンで作る
+#   VERSION=1.1.0 bash tools/build.sh
 #
 # 秘密鍵（keys/）は絶対に ZIP に入れない。公開鍵が未設定なら止まる。
 
@@ -21,7 +21,7 @@ echo "TaskDeck $VERSION を組み立てます"
 # 1. 公開鍵が入っているか確認する（未設定のまま売るとキーを登録できない）
 if grep -q 'const LICENSE_PUBLIC_KEY = "__PUBLIC_KEY__";' "$ROOT/app/taskdeck.html"; then
   echo "エラー: アプリに公開鍵が入っていません。" >&2
-  echo "       先に  python taskdeck/tools/keygen.py init  を実行してください。" >&2
+  echo "       先に  python tools/keygen.py init  を実行してください。" >&2
   exit 1
 fi
 

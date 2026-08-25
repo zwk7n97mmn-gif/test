@@ -18,15 +18,15 @@ taskdeck/
 ```
 
 設計・仕様・拡張の作り方は、別立てのドキュメント集
-[`../taskdeck-docs/`](../taskdeck-docs/) にまとめてあります。
+**`taskdeck-docs` リポジトリ**にまとめてあります。
 
 ## 3 手で売り始める
 
 ```bash
-python3 taskdeck/tools/keygen.py init          # 1. 鍵ペアを作る（最初の一度だけ）
-bash taskdeck/tools/build.sh                   # 2. 本体と拡張の配布 ZIP をまとめて作る
-python3 taskdeck/tools/keygen.py issue --name "購入者名"            # 3a. 本体だけの注文
-python3 taskdeck/tools/keygen.py issue --name "購入者名" --ext tax  # 3b. 拡張つきの注文
+python3 tools/keygen.py init          # 1. 鍵ペアを作る（最初の一度だけ）
+bash tools/build.sh                   # 2. 本体と拡張の配布 ZIP をまとめて作る
+python3 tools/keygen.py issue --name "購入者名"            # 3a. 本体だけの注文
+python3 tools/keygen.py issue --name "購入者名" --ext tax  # 3b. 拡張つきの注文
 ```
 
 詳しい手順は **[docs/SELLING-GUIDE.md](docs/SELLING-GUIDE.md)** にあります。
@@ -64,8 +64,8 @@ extensions/tax/{manifest.json, main.js}
 権利のないキーでも、拡張は評価として動きます（既定で 30 件まで）。
 
 新しい拡張を作るときは `extensions/` に `manifest.json` と `main.js` を置いて
-`python3 taskdeck/tools/pkg.py build extensions/<id>` を実行します。
-書き方は [`../taskdeck-docs/docs/開発/拡張の作り方.md`](../taskdeck-docs/docs/開発/拡張の作り方.md) にあります。
+`python3 tools/pkg.py build extensions/<id>` を実行します。
+書き方は `taskdeck-docs` リポジトリの `docs/開発/拡張の作り方.md` にあります。
 
 ## ライセンスの仕組み
 
@@ -81,11 +81,13 @@ extensions/tax/{manifest.json, main.js}
 ## テスト
 
 ```bash
-python3 taskdeck/tests/test_license.py    # 鍵の発行と検証（Python と JavaScript の一致）
-python3 taskdeck/tests/test_package.py    # 拡張パッケージの署名（同上）
+bash tests/run_all.sh            # まとめて実行する（実ブラウザ分は入っていれば動かす）
+
+python3 tests/test_license.py    # 鍵の発行と検証（Python と JavaScript の一致）
+python3 tests/test_package.py    # 拡張パッケージの署名（同上）
 npm i playwright
-node taskdeck/tests/ui_smoke.mjs          # 実ブラウザ: タスク管理の操作 39 項目
-node taskdeck/tests/ui_extension.mjs      # 実ブラウザ: 拡張の署名〜記帳〜取り外し 30 項目
+node tests/ui_smoke.mjs          # 実ブラウザ: タスク管理の操作 39 項目
+node tests/ui_extension.mjs      # 実ブラウザ: 拡張の署名〜記帳〜取り外し 30 項目
 ```
 
 `build.sh` は ZIP を作る前にライセンスのテストを実行し、

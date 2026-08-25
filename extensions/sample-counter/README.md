@@ -5,8 +5,8 @@
 新しい拡張を作るときは、このフォルダごと写して、`manifest.json` の `id` と `name` を書き換えてください。
 
 ```bash
-cp -r taskdeck/extensions/sample-counter taskdeck/extensions/<新しいid>
-python3 taskdeck/tools/pkg.py build taskdeck/extensions/<新しいid>
+cp -r extensions/sample-counter extensions/<新しいid>
+python3 tools/pkg.py build extensions/<新しいid>
 ```
 
 この見本で使っている拡張 API:
