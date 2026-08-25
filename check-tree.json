@@ -1,7 +1,8 @@
 {
   "$comment": "ツリー照合の設定。値はすべて省略でき、省略すると下のコメントの既定値になる。",
   "docs": ["*.md", "docs/**/*.md"],
-  "ignore": ["**/__pycache__/**", "**/node_modules/**", "**/.venv/**", "*.pyc", "*.log"],
+  "$comment_ignore": "SPLIT.md は切り出しが済んだら消す作業用のメモ。ツリーに載せない",
+  "ignore": ["**/__pycache__/**", "**/node_modules/**", "**/.venv/**", "*.pyc", "*.log", "SPLIT.md"],
   "source": "auto",
   "require_listed": true,
   "require_tree": true

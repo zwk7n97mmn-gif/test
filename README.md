@@ -103,4 +103,4 @@ bash tests/run_all.sh
 ## 👀 関連ページ
 
 - [リポジトリ全体像](リポジトリ全体像.md) … 本体
-- [Giteaイシュー自動返信キット](../gitea-ai-issue-reply/README.md) … `refs.json` を持つ側
+- `gitea-ai-issue-reply` リポジトリ … `refs.json` を持つ側
