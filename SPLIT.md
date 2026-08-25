@@ -1,60 +1,68 @@
-# 独立したリポジトリとして切り出す手順
+# このフォルダを独立したリポジトリにする
 
-この `taskdeck-docs/` は、そのまま別リポジトリの中身になるよう作ってあります。
-製品コードのリポジトリから切り出すときは、次のどちらかを実行してください。
+**TaskDeck のドキュメント集** です。このフォルダ（`taskdeck-docs/`）は**そのままで1つのリポジトリとして動きます**。<br>
+切り出したら、**このファイルは消してください。**
 
-## A. 履歴ごと切り出す（おすすめ）
+## 中身が閉じていることの確認
 
-このディレクトリだけのコミット履歴を持った新しいリポジトリになります。
+| 確認したこと | 結果 |
+| --- | --- |
+| 製品リポジトリを参照しているリンク | 無し（リポジトリ名を文中で示す形に変更済み） |
+| 中身 | 説明書・設計・仕様・ADR 25 枚 |
+
+> ℹ️ 製品コードは `taskdeck` リポジトリにあります。**説明だけ**をこちらに置きます。
+
+---
+
+## 手順A：履歴ごと切り出す（おすすめ）
+
+「いつ・誰が・なぜ書いたか」が残ります。
 
 ```bash
-# 1. GitHub で空のリポジトリ taskdeck-docs を作る（README を作らない設定で）
+# 1. taskdeck-docs だけの履歴を持つブランチを作る
+git subtree split --prefix=taskdeck-docs -b taskdeck-docs-only
 
-# 2. このディレクトリを履歴ごと切り出す
-git subtree split --prefix=taskdeck-docs -b docs-only
+# 2. 新しいリポジトリを作る（Gitea / GitHub の画面で。README は作らない）
 
-# 3. 新しいリポジトリへ押し出す
-git push git@github.com:<あなた>/taskdeck-docs.git docs-only:main
+# 3. 押し込む
+git push <新しいリポジトリのURL> taskdeck-docs-only:main
 
-# 4. 元のリポジトリから取り除く（任意）
-git rm -r taskdeck-docs
-git commit -m "docs: ドキュメントを taskdeck-docs リポジトリへ移した"
+# 4. 別の場所にクローンして確かめる
+git clone <新しいリポジトリのURL> /path/to/taskdeck-docs
+cd /path/to/taskdeck-docs
+ls docs
+
+# 5. 作業用ブランチを片付ける
+git branch -D taskdeck-docs-only
 ```
 
-## B. 中身だけコピーする
+> ⚠️ **新しいリポジトリは空で作ってください。**<br>
+> README を自動生成すると、押し込むときに履歴がぶつかります。
 
-履歴が要らない場合は、こちらのほうが簡単です。
+---
+
+## 手順B：まっさらから始める
+
+履歴が要らないときはこちらが簡単です。
 
 ```bash
-mkdir ../taskdeck-docs && cp -r taskdeck-docs/. ../taskdeck-docs/
-cd ../taskdeck-docs
+cp -r taskdeck-docs /path/to/taskdeck-docs-new
+cd /path/to/taskdeck-docs-new
+rm SPLIT.md
 git init -b main
 git add -A
-git commit -m "docs: TaskDeck のドキュメントを追加"
-git remote add origin git@github.com:<あなた>/taskdeck-docs.git
+git commit -m "taskdeck-docs: 最初のコミット"
+git remote add origin <新しいリポジトリのURL>
 git push -u origin main
 ```
 
-## 切り出したあとに直す場所
+---
 
-製品コードを指しているリンクは、切り出すと切れます。次の 1 か所だけです。
+## 切り出した後にやること
 
-| ファイル | リンク先 | 直しかた |
-|---|---|---|
-| `docs/設計/セキュリティ設計.md` | `../../../taskdeck/legal/EULA.md` | 製品リポジトリの GitHub URL に置き換える |
-
-確認は次のコマンドでできます。
-
-```bash
-grep -rn "](.*taskdeck/" --include="*.md" .
-```
-
-製品リポジトリ側の `taskdeck/README.md` にも、この文書群へのリンクが 2 か所あります。
-そちらも新しい URL に向け直してください。
-
-## 公開する場合
-
-仕様書（`docs/仕様/`）と拡張の作り方（`docs/開発/拡張の作り方.md`）は、
-外部の開発者に拡張を作ってもらうときにそのまま渡せます。
-販売の内部事情（価格の考えかたなど）はこの文書群には含めていないため、
-リポジトリごと公開しても差し支えありません。
+| # | やること |
+| --- | --- |
+| 1 | `SPLIT.md` を消す |
+| 2 | 元のリポジトリから `taskdeck-docs/` を消す（`git rm -r taskdeck-docs`） |
+| 3 | 新しいリポジトリの URL を、リポジトリ一覧に登録する |
+| 4 | 確認コマンドが通ることを見る（`ls docs`） |
