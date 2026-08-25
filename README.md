@@ -13,6 +13,7 @@ taskdeck/
 ├── docs/                  マニュアル・販売手順・メール文面
 ├── legal/                 使用許諾契約書・特商法表記・プライバシーポリシー
 ├── tools/                 ライセンス発行（keygen.py）、拡張の署名（pkg.py）、配布 ZIP（build.sh）
+│                          売り始める前の確認（preflight.py）
 ├── tests/                 署名の検証テストと、実ブラウザでの画面操作テスト
 └── dist/                  build.sh が作る配布 ZIP の置き場
 ```
@@ -82,6 +83,7 @@ extensions/tax/{manifest.json, main.js}
 
 ```bash
 bash tests/run_all.sh            # まとめて実行する（実ブラウザ分は入っていれば動かす）
+python3 tools/preflight.py       # 売り始める前の確認（抜けを機械で見つける）
 
 python3 tests/test_license.py    # 鍵の発行と検証（Python と JavaScript の一致）
 python3 tests/test_package.py    # 拡張パッケージの署名（同上）
