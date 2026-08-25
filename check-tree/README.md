@@ -134,5 +134,5 @@ bash tests/run_all.sh
 
 ## 👀 関連ページ
 
-- [Giteaイシュー自動返信キット](../gitea-ai-issue-reply/README.md) … 同じ考え方の検査（参照一覧の照合）を持つ
-- [repo-hub](../repo-hub/README.md) … リポジトリ一覧とページの照合
+- `gitea-ai-issue-reply` リポジトリ … 同じ考え方の検査（参照一覧の照合）を持つ
+- `repo-hub` リポジトリ … リポジトリ一覧とページの照合

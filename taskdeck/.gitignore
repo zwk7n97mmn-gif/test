@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# 秘密鍵と発行台帳。⚠ 絶対にコミットしない
+keys/
+
+# 配布物（build.sh が作る）
+dist/
+
+# テスト用の依存
+node_modules/
+package-lock.json

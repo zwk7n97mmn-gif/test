@@ -1,7 +1,7 @@
 /**
  * 拡張のしくみを、実際のブラウザで端から端まで確かめる。
  *
- *   npm i playwright && node taskdeck/tests/ui_extension.mjs
+ *   npm i playwright && node tests/ui_extension.mjs
  *
  * 使い捨ての鍵で「アプリの組み立て → 拡張パッケージの署名 → 読み込み → 記帳」までを通す。
  */

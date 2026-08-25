@@ -12,7 +12,9 @@ check() { if [ "$2" = "true" ]; then echo "  OK   $1"; else echo "  FAIL $1"; FA
 echo "配布元との一致"
 
 VENDORED="$ROOT/scripts/check_tree.py"
-UPSTREAM="$ROOT/../check-tree/check_tree.py"
+# 配布元の場所。⚠ 単体のリポジトリに切り出すと隣には無くなるので、
+#   別の場所に置いた check-tree を指せるようにしておく
+UPSTREAM="${CHECK_TREE_UPSTREAM:-$ROOT/../check-tree/check_tree.py}"
 
 check "配布されたツールがある" "$([ -f "$VENDORED" ] && echo true || echo false)"
 
@@ -29,6 +31,7 @@ if [ -f "$UPSTREAM" ]; then
   fi
 else
   echo "  --   配布元が見つからないため比較を省略（このリポジトリ単体で動かしている場合は正常）"
+  echo "       比較したいときは CHECK_TREE_UPSTREAM=/path/to/check-tree/check_tree.py を指定"
 fi
 
 # ツール自体が動くか

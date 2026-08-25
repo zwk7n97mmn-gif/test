@@ -30,7 +30,7 @@ taskdeck/
 ## 1. 鍵を作る（最初に一度だけ）
 
 ```bash
-python3 taskdeck/tools/keygen.py init
+python3 tools/keygen.py init
 ```
 
 これで次の 2 つが起きます。
@@ -79,7 +79,7 @@ Stripe を使う場合の最短経路です（PayPal・Paddle・BOOTH などで�
 ## 4. 注文が入ったらキーを発行する
 
 ```bash
-python3 taskdeck/tools/keygen.py issue --name "株式会社サンプル" --plan business --seats 5 --note "注文番号 1234"
+python3 tools/keygen.py issue --name "株式会社サンプル" --plan business --seats 5 --note "注文番号 1234"
 ```
 
 - `--plan` は `personal` / `business` / `site`
@@ -93,7 +93,7 @@ python3 taskdeck/tools/keygen.py issue --name "株式会社サンプル" --plan 
 発行したキーが有効かどうかは、いつでも確認できます。
 
 ```bash
-python3 taskdeck/tools/keygen.py verify "TD1.…"
+python3 tools/keygen.py verify "TD1.…"
 ```
 
 ## 4.5 オプション（拡張）を売る
@@ -101,7 +101,7 @@ python3 taskdeck/tools/keygen.py verify "TD1.…"
 本体とは別に、拡張パッケージを単品で売れます。手順は本体とほとんど同じです。
 
 ```bash
-bash taskdeck/tools/build.sh
+bash tools/build.sh
 # → dist/taskdeck-1.0.0.zip        本体
 # → dist/taskdeck-tax-1.0.0.zip    オプション「確定申告データ管理」
 ```
@@ -109,7 +109,7 @@ bash taskdeck/tools/build.sh
 注文が入ったら、その購入者の**新しいキーを発行し直します**。
 
 ```bash
-python3 taskdeck/tools/keygen.py issue --name "株式会社サンプル" --plan business --seats 5 --ext tax
+python3 tools/keygen.py issue --name "株式会社サンプル" --plan business --seats 5 --ext tax
 ```
 
 購入者は、届いたキーを「ライセンス」画面で入れ替えるだけです。
@@ -124,13 +124,13 @@ python3 taskdeck/tools/keygen.py issue --name "株式会社サンプル" --plan 
 拡張は、キーが無くても評価として動きます（確定申告なら仕訳 30 件まで）。
 「まず入れてもらって、続けたくなったら買ってもらう」流れを作れます。
 
-拡張を新しく作るときは `extensions/` に置いて `python3 taskdeck/tools/pkg.py build extensions/<id>` を実行します。
+拡張を新しく作るときは `extensions/` に置いて `python3 tools/pkg.py build extensions/<id>` を実行します。
 書き方は `taskdeck-docs/docs/開発/拡張の作り方.md` にまとめてあります。
 
 ## 5. 配布用 ZIP を作る
 
 ```bash
-bash taskdeck/tools/build.sh
+bash tools/build.sh
 ```
 
 `taskdeck/dist/taskdeck-1.0.0.zip` ができます。中身はアプリ本体・マニュアル・
@@ -179,6 +179,6 @@ bash taskdeck/tools/build.sh
 ## 値上げ・改訂をするとき
 
 - 価格は `landing/index.html` の 3 か所を直すだけです。
-- アプリを直したら `VERSION=1.1.0 bash taskdeck/tools/build.sh` で新しい ZIP を作り、
+- アプリを直したら `VERSION=1.1.0 bash tools/build.sh` で新しい ZIP を作り、
   既存のお客様には `keys/issued.csv` のメール控えをもとに案内します。
 - 公開鍵は変えないでください。変えると発行済みのキーが無効になります。

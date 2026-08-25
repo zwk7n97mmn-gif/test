@@ -6,10 +6,10 @@
 
 使い方:
 
-    python taskdeck/tools/keygen.py init                    # 最初に一度だけ。鍵ペアを作る
-    python taskdeck/tools/keygen.py issue --name "山田太郎" # 購入者ごとに発行する
-    python taskdeck/tools/keygen.py verify "TD1.xxx.yyy"    # 発行したキーを確かめる
-    python taskdeck/tools/keygen.py pubkey                  # 埋め込み済みの公開鍵を表示する
+    python tools/keygen.py init                    # 最初に一度だけ。鍵ペアを作る
+    python tools/keygen.py issue --name "山田太郎" # 購入者ごとに発行する
+    python tools/keygen.py verify "TD1.xxx.yyy"    # 発行したキーを確かめる
+    python tools/keygen.py pubkey                  # 埋め込み済みの公開鍵を表示する
 
 アプリ側（app/taskdeck.html）は公開鍵しか持たないため、
 配布物を解析されてもキーを偽造されない。
@@ -58,7 +58,7 @@ def load_private_key() -> int:
     if not PRIVATE_KEY_PATH.exists():
         sys.exit(
             f"秘密鍵が見つかりません: {PRIVATE_KEY_PATH}\n"
-            "先に `python taskdeck/tools/keygen.py init` を実行してください。"
+            "先に `python tools/keygen.py init` を実行してください。"
         )
     data = json.loads(PRIVATE_KEY_PATH.read_text())
     return int(data["private_key"], 16)
@@ -111,7 +111,7 @@ def cmd_init(args: argparse.Namespace) -> None:
     print(f"  秘密鍵 : {PRIVATE_KEY_PATH}  ← バックアップを取り、絶対に配布しないでください")
     print(f"  公開鍵 : {pubkey_hex}")
     print(f"  {APP_HTML.relative_to(ROOT.parent)} に公開鍵を埋め込みました。")
-    print("\n次は `python taskdeck/tools/keygen.py issue --name \"購入者名\"` でキーを発行できます。")
+    print("\n次は `python tools/keygen.py issue --name \"購入者名\"` でキーを発行できます。")
 
 
 def cmd_issue(args: argparse.Namespace) -> None:
