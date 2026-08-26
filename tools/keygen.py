@@ -110,7 +110,9 @@ def cmd_init(args: argparse.Namespace) -> None:
     print("鍵ペアを作りました。")
     print(f"  秘密鍵 : {PRIVATE_KEY_PATH}  ← バックアップを取り、絶対に配布しないでください")
     print(f"  公開鍵 : {pubkey_hex}")
-    print(f"  {APP_HTML.relative_to(ROOT.parent)} に公開鍵を埋め込みました。")
+    print(f"  {APP_HTML.relative_to(ROOT)} に公開鍵を埋め込みました。")
+    print("\n⚠ 秘密鍵をリポジトリの外にバックアップしてください。失うと以後キーを発行できません。")
+    print("  戻した鍵が本物かは `python tools/preflight.py --quick` で確かめられます。")
     print("\n次は `python tools/keygen.py issue --name \"購入者名\"` でキーを発行できます。")
 
 

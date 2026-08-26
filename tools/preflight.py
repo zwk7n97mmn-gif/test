@@ -13,11 +13,16 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import p256  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 APP_HTML = ROOT / "app" / "taskdeck.html"
@@ -88,6 +93,21 @@ def check_keys() -> None:
     has_private = PRIVATE_KEY.exists()
     check(has_private, "秘密鍵がある",
           f"{PRIVATE_KEY} がありません。`python3 tools/keygen.py init` を実行してください。")
+
+    # 🚨 バックアップから戻した鍵が別物だと、発行したキーが購入者の手元で弾かれる。
+    #    「発行はできるのに使えない」という一番わかりにくい壊れ方をするので、ここで見る
+    if has_private and embedded and embedded != "__PUBLIC_KEY__":
+        try:
+            private = int(json.loads(PRIVATE_KEY.read_text(encoding="utf-8"))["private_key"], 16)
+            derived = p256.public_to_hex(p256.public_from_private(private))
+        except Exception as error:
+            derived = f"（読めませんでした: {error}）"
+        check(derived == embedded, "秘密鍵とアプリの公開鍵が対になっている",
+              "アプリに入っている公開鍵は、この秘密鍵のものではありません。\n"
+              "別の鍵のバックアップを戻した可能性があります。\n"
+              "⚠ このまま発行すると、購入者の手元で「正しくありません」と出ます。\n"
+              f"  アプリの公開鍵 : {embedded}\n"
+              f"  秘密鍵から作った公開鍵 : {derived}")
 
     if not in_git_repo():
         skip("秘密鍵が Git に入っていない", "Git 管理下ではない")
