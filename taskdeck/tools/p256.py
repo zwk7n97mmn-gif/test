@@ -66,12 +66,17 @@ def is_on_curve(point: Point) -> bool:
     return (y * y - (x * x * x + A * x + B)) % P == 0
 
 
+def public_from_private(private: int) -> tuple[int, int]:
+    """秘密鍵から対になる公開鍵を作る。バックアップが本物かの確認にも使う。"""
+    public = point_mul(private, (GX, GY))
+    assert public is not None
+    return public
+
+
 def generate_keypair() -> tuple[int, tuple[int, int]]:
     """(秘密鍵, 公開鍵) を返す。"""
     private = secrets.randbelow(N - 1) + 1
-    public = point_mul(private, (GX, GY))
-    assert public is not None
-    return private, public
+    return private, public_from_private(private)
 
 
 def _hash_int(message: bytes) -> int:

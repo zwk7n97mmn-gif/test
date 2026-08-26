@@ -82,6 +82,22 @@ def main() -> None:
         check(code == 1 and "秘密鍵がある" in out, "秘密鍵が無ければ止める")
         private.write_text(kept, encoding="utf-8")
 
+        # 🚨 別の鍵のバックアップを戻してしまった場合
+        #    発行はできるのに購入者の手元で弾かれる、いちばん分かりにくい壊れ方
+        import json as _json
+        sys.path.insert(0, str(work / "tools"))
+        import p256 as _p256
+        other_private, _ = _p256.generate_keypair()
+        data = _json.loads(private.read_text(encoding="utf-8"))
+        data["private_key"] = f"{other_private:064x}"
+        private.write_text(_json.dumps(data), encoding="utf-8")
+        code, out = run_preflight(work)
+        check(code == 1 and "秘密鍵とアプリの公開鍵が対になっている" in out,
+              "別の鍵のバックアップを戻したら止める")
+        private.write_text(kept, encoding="utf-8")
+        code, out = run_preflight(work)
+        check(code == 0, "正しい鍵に戻せば通る")
+
         # --- 差し替え漏れ ---
         landing = work / "landing" / "index.html"
         saved = landing.read_text(encoding="utf-8")
