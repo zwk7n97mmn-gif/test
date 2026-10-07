@@ -9,3 +9,6 @@ taskdeck/keys/
 taskdeck/dist/
 node_modules/
 package-lock.json
+
+# テスト用に入れた playwright の残骸
+package.json
