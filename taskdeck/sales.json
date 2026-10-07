@@ -1,0 +1,12 @@
+{
+  "$comment": "売り方の設定。preflight.py が、どの確認をするかをここで決める。",
+  "$comment_channel": "booth = BOOTH などのプラットフォームで売る / own-site = 自分のサイトで売る",
+  "channel": "booth",
+  "$comment_booth": "BOOTH の商品ページ URL。公開したら実際の URL に置き換える",
+  "product_urls": {
+    "パーソナル": "〔BOOTHの商品URL: パーソナル〕",
+    "ビジネス": "〔BOOTHの商品URL: ビジネス〕",
+    "サイトライセンス": "〔BOOTHの商品URL: サイトライセンス〕",
+    "確定申告オプション": "〔BOOTHの商品URL: 確定申告オプション〕"
+  }
+}

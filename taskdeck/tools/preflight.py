@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """売り始める前に、抜けが無いかを機械で確かめる。
 
-    python3 tools/preflight.py           # 全部見る
-    python3 tools/preflight.py --quick   # テストと ZIP 作成を飛ばす（速い）
+    python3 tools/preflight.py              # 全部見る
+    python3 tools/preflight.py --quick      # テストと ZIP 作成を飛ばす（速い）
+    python3 tools/preflight.py --channel own-site   # 売り方を一時的に変えて見る
+
+どこで売るかは sales.json の channel で決めます。
+  booth    … BOOTH などのプラットフォームで売る（特商法はプラットフォーム側）
+  own-site … 自分のサイトで売る（特商法の掲載もこちらの責任）
 
 販売の準備は項目が多く、1 つ抜けただけで「買えない」「使えない」が起きます。
 人が目で追う代わりに、確かめられるものはここで確かめます。
@@ -29,7 +34,9 @@ APP_HTML = ROOT / "app" / "taskdeck.html"
 KEYS_DIR = ROOT / "keys"
 PRIVATE_KEY = KEYS_DIR / "private.json"
 LANDING = ROOT / "landing" / "index.html"
+BOOTH_TEXT = ROOT / "landing" / "BOOTH商品説明.md"
 LEGAL_DIR = ROOT / "legal"
+SALES_CONFIG = ROOT / "sales.json"
 
 # 〔　〕は「ここを自分の情報に置き換える」印。売る前に消えていないといけない
 PLACEHOLDER = re.compile(r"〔[^〕]*〕")
@@ -125,9 +132,25 @@ def check_keys() -> None:
 
 # --- 2. 差し替え -------------------------------------------------------
 
-def check_placeholders() -> None:
+def load_channel(override: str | None) -> str:
+    if override:
+        return override
+    if SALES_CONFIG.exists():
+        try:
+            return json.loads(SALES_CONFIG.read_text(encoding="utf-8")).get("channel", "own-site")
+        except json.JSONDecodeError as error:
+            sys.exit(f"{SALES_CONFIG} を読めませんでした: {error}")
+    return "own-site"
+
+
+def check_placeholders(channel: str) -> None:
     print("\n2. 自分の情報への差し替え")
-    targets = [LANDING, *sorted(LEGAL_DIR.glob("*.md"))]
+    # ⚠ 売り方によって、置き換えが要るファイルが変わる。
+    #   使わないページの〔　〕で止められても直しようがない
+    if channel == "booth":
+        targets = [BOOTH_TEXT, SALES_CONFIG, *sorted(LEGAL_DIR.glob("*.md"))]
+    else:
+        targets = [LANDING, *sorted(LEGAL_DIR.glob("*.md"))]
     remaining = [hit for path in targets for hit in find_placeholders(path)]
     check(not remaining, "〔　〕の置き換えが済んでいる", "\n".join(remaining[:15]))
 
@@ -180,9 +203,41 @@ def check_landing() -> None:
 
 # --- 4. 法務 -----------------------------------------------------------
 
-def check_legal() -> None:
+def check_booth() -> None:
+    """BOOTH で売るときの確認。特商法はプラットフォーム側なので、ここでは見ない。"""
+    print("\n3. 商品ページ（BOOTH）")
+    if not BOOTH_TEXT.exists():
+        check(False, "商品説明の文面がある", f"{BOOTH_TEXT} がありません。")
+        return
+    text = BOOTH_TEXT.read_text(encoding="utf-8")
+
+    # 🚨 手で発行する運用なので、待ち時間を先に伝えていないと必ず問い合わせになる
+    check("ライセンスキーのお届けについて" in text, "キーが後から届くことを商品説明に書いている",
+          "手でお送りする運用です。先に伝えていないと「キーが来ない」と言われます。")
+    check("データの保存場所について" in text, "データが消える条件を商品説明に書いている",
+          "ブラウザのデータを消すと復元できません。買う前に伝える必要があります。")
+    check("動作環境" in text, "動作環境を商品説明に書いている")
+    check("返金" in text, "返金の扱いを商品説明に書いている")
+
+    if not SALES_CONFIG.exists():
+        check(False, "商品ページの URL を控えてある", f"{SALES_CONFIG} がありません。")
+        return
+    urls = json.loads(SALES_CONFIG.read_text(encoding="utf-8")).get("product_urls", {})
+    unset = [name for name, url in urls.items() if not url.startswith("http")]
+    check(not unset, "商品ページの URL を控えてある",
+          f"まだ置き換えていないもの: {'、'.join(unset)}\n"
+          "BOOTH で出品し、商品ページの URL を sales.json に書いてください。")
+
+
+def check_legal(channel: str) -> None:
     print("\n4. 法務")
-    for name in ["EULA.md", "PRIVACY.md", "特定商取引法に基づく表記.md"]:
+    required = ["EULA.md", "PRIVACY.md"]
+    if channel == "own-site":
+        # 自分のサイトで売るなら、特商法の掲載はこちらの責任
+        required.append("特定商取引法に基づく表記.md")
+    else:
+        skip("特定商取引法に基づく表記", "BOOTH 側の設定で行う")
+    for name in required:
         path = LEGAL_DIR / name
         check(path.exists() and path.stat().st_size > 200, f"{name} がある（中身が入っている）",
               f"{path} が無いか、中身がほとんどありません。")
@@ -221,13 +276,19 @@ def check_build() -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="売り始める前の確認")
     parser.add_argument("--quick", action="store_true", help="テストと ZIP 作成を飛ばす")
+    parser.add_argument("--channel", choices=["booth", "own-site"],
+                        help="売り方（既定: sales.json の channel）")
     args = parser.parse_args()
+    channel = load_channel(args.channel)
 
-    print("売り始める前の確認")
+    print(f"売り始める前の確認（売り方: {'BOOTH などのプラットフォーム' if channel == 'booth' else '自分のサイト'}）")
     check_keys()
-    check_placeholders()
-    check_landing()
-    check_legal()
+    check_placeholders(channel)
+    if channel == "booth":
+        check_booth()
+    else:
+        check_landing()
+    check_legal(channel)
     if args.quick:
         print("\n5-6. テストと配布物")
         skip("テストと ZIP 作成", "--quick のため")
