@@ -9,12 +9,13 @@ taskdeck/
 ├── app/taskdeck.html      製品本体（これ 1 ファイルで完結）
 ├── extensions/            オプション（拡張）のソース
 │   └── tax/               確定申告データ管理（複式簿記）
-├── landing/index.html     販売ページ（画像は landing/assets/）
-├── docs/                  マニュアル・販売手順・メール文面
+├── landing/               BOOTH の商品説明文と、自分のサイト用の販売ページ
+├── docs/                  マニュアル・販売手順・運用手引き・送る文面
 ├── legal/                 使用許諾契約書・特商法表記・プライバシーポリシー
 ├── tools/                 ライセンス発行（keygen.py）、拡張の署名（pkg.py）、配布 ZIP（build.sh）
 │                          売り始める前の確認（preflight.py）
 ├── tests/                 署名の検証テストと、実ブラウザでの画面操作テスト
+├── sales.json             どこで売るか（booth / own-site）
 └── dist/                  build.sh が作る配布 ZIP の置き場
 ```
 
@@ -30,8 +31,13 @@ python3 tools/keygen.py issue --name "購入者名"            # 3a. 本体だ�
 python3 tools/keygen.py issue --name "購入者名" --ext tax  # 3b. 拡張つきの注文
 ```
 
-詳しい手順は **[docs/SELLING-GUIDE.md](docs/SELLING-GUIDE.md)** にあります。
-販売ページの〔　〕を自分の情報に置き換えるところまで、ひと通り書いてあります。
+売り先は **BOOTH**（ダウンロード販売）を前提にしています。サーバーは要りません。
+配るファイルは全員同じで、個別なのは**キーの文字列だけ**なので、
+注文通知を見て発行し、メッセージで送れば足ります。
+
+詳しい手順は **[docs/SELLING-GUIDE.md](docs/SELLING-GUIDE.md)**、
+売り始めた後の運用は **[docs/OPERATIONS.md](docs/OPERATIONS.md)** にあります。
+自分のサイトで売る場合は `sales.json` の `channel` を `own-site` にしてください。
 
 ## 製品の中身
 

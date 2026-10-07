@@ -25,8 +25,8 @@ def check(condition: bool, label: str) -> None:
         _failures.append(label)
 
 
-def run_preflight(work: Path) -> tuple[int, str]:
-    result = subprocess.run([sys.executable, str(work / "tools" / "preflight.py"), "--quick"],
+def run_preflight(work: Path, *extra: str) -> tuple[int, str]:
+    result = subprocess.run([sys.executable, str(work / "tools" / "preflight.py"), "--quick", *extra],
                             capture_output=True, text=True, timeout=120)
     return result.returncode, result.stdout + result.stderr
 
@@ -44,7 +44,9 @@ def build_sellable(work: Path) -> None:
         "サポート窓口のメールアドレス": "support@test-shop.invalid",
         "YYYY": "2026",
     }
-    for path in [work / "landing" / "index.html", *sorted((work / "legal").glob("*.md"))]:
+    targets = [work / "landing" / "index.html", work / "landing" / "BOOTH商品説明.md",
+               work / "sales.json", *sorted((work / "legal").glob("*.md"))]
+    for path in targets:
         text = path.read_text(encoding="utf-8")
         # 決済・ダウンロード・法務の URL は本物の形にする（決済リンクの検査を通すため）
         text = re.sub(r"〔([^〕]*(?:URL|決済リンク)[^〕]*)〕",
@@ -99,11 +101,22 @@ def main() -> None:
         check(code == 0, "正しい鍵に戻せば通る")
 
         # --- 差し替え漏れ ---
+        booth_text = work / "landing" / "BOOTH商品説明.md"
+        kept = booth_text.read_text(encoding="utf-8")
+        booth_text.write_text(kept.replace("検証用テスト商店", "〔販売者名〕", 1), encoding="utf-8")
+        code, out = run_preflight(work)
+        check(code == 1 and "〔　〕の置き換えが済んでいる" in out,
+              "商品説明の置き換え漏れを見つける")
+        booth_text.write_text(kept, encoding="utf-8")
+
         landing = work / "landing" / "index.html"
         saved = landing.read_text(encoding="utf-8")
         landing.write_text(saved.replace("検証用テスト商店", "〔販売者名〕", 1), encoding="utf-8")
         code, out = run_preflight(work)
-        check(code == 1 and "〔　〕の置き換えが済んでいる" in out, "置き換え漏れを見つける")
+        check(code == 0, "BOOTH で売るなら、使わない販売ページの〔　〕では止めない")
+        code, out = run_preflight(work, "--channel", "own-site")
+        check(code == 1 and "〔　〕の置き換えが済んでいる" in out,
+              "自分のサイトなら販売ページの置き換え漏れを見つける")
         landing.write_text(saved, encoding="utf-8")
 
         eula = work / "legal" / "EULA.md"
@@ -113,19 +126,56 @@ def main() -> None:
         check(code == 1 and "見本のアドレスが残っていない" in out, "見本のアドレスを見つける")
         eula.write_text(kept_eula, encoding="utf-8")
 
-        # --- 販売ページ ---
-        landing.write_text(re.sub(r'href="https?://[^"]*"', 'href="#"', saved), encoding="utf-8")
+        # --- 売り方で見るものが変わる ---
         code, out = run_preflight(work)
+        check(code == 0 and "BOOTH" in out, "既定（sales.json）では BOOTH 向けに見る")
+        code, out = run_preflight(work, "--channel", "own-site")
+        check(code == 0 and "自分のサイト" in out, "--channel で自分のサイト向けに切り替えられる")
+
+        booth = work / "landing" / "BOOTH商品説明.md"
+        kept_booth = booth.read_text(encoding="utf-8")
+        booth.write_text(kept_booth.replace("■ ⚠ ライセンスキーのお届けについて（必ずお読みください）", ""),
+                         encoding="utf-8")
+        code, out = run_preflight(work)
+        check(code == 1 and "キーが後から届くことを商品説明に書いている" in out,
+              "キーの待ち時間を伝えていなければ止める")
+        booth.write_text(kept_booth, encoding="utf-8")
+
+        sales = work / "sales.json"
+        kept_sales = sales.read_text(encoding="utf-8")
+        import json as _js
+        data = _js.loads(kept_sales)
+        data["product_urls"]["パーソナル"] = "〔BOOTHの商品URL: パーソナル〕"
+        sales.write_text(_js.dumps(data, ensure_ascii=False), encoding="utf-8")
+        code, out = run_preflight(work)
+        check(code == 1 and "商品ページの URL を控えてある" in out,
+              "商品ページの URL が未設定なら止める")
+        sales.write_text(kept_sales, encoding="utf-8")
+
+        # BOOTH で売るなら、特商法はプラットフォーム側なので見ない
+        tokusho = work / "legal" / "特定商取引法に基づく表記.md"
+        kept_tokusho = tokusho.read_text(encoding="utf-8")
+        tokusho.write_text("短すぎる中身\n", encoding="utf-8")
+        code, out = run_preflight(work)
+        check(code == 0, "BOOTH なら特商法ファイルの中身は見ない")
+        code, out = run_preflight(work, "--channel", "own-site")
+        check(code == 1 and "特定商取引法に基づく表記.md がある" in out,
+              "自分のサイトなら特商法ファイルを見る")
+        tokusho.write_text(kept_tokusho, encoding="utf-8")
+
+        # --- 販売ページ（自分のサイトで売る場合） ---
+        landing.write_text(re.sub(r'href="https?://[^"]*"', 'href="#"', saved), encoding="utf-8")
+        code, out = run_preflight(work, "--channel", "own-site")
         check(code == 1 and "決済リンクが入っている" in out, "決済リンクが無ければ止める")
 
         landing.write_text(re.sub(r"<a\s[^>]*>使用許諾契約書</a>", "", saved), encoding="utf-8")
-        code, out = run_preflight(work)
+        code, out = run_preflight(work, "--channel", "own-site")
         check(code == 1 and "「使用許諾契約書」へリンクしている" in out,
               "法務ページへの導線が無ければ止める")
 
         landing.write_text(saved.replace('href="#features"', 'href="無いページ.html"'),
                            encoding="utf-8")
-        code, out = run_preflight(work)
+        code, out = run_preflight(work, "--channel", "own-site")
         check(code == 1 and "リンクが切れていない" in out, "リンク切れを見つける")
         landing.write_text(saved, encoding="utf-8")
 
